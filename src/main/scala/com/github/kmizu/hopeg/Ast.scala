@@ -1,7 +1,7 @@
 package com
 package github
 package kmizu
-package pegex
+package hopeg
 
 /** This object provides types representing ASTs of extended PEG.
   * It is used as namespace.
