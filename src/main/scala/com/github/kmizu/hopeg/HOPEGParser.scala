@@ -40,9 +40,9 @@ object HOPEGParser {
       case (pos ~ e) ~ rules => Grammar(Pos(pos.line, pos.column), StartRuleName, Rule(Pos(pos.line, pos.column), StartRuleName, e)::rules)
     }
 
-    lazy val Definition: Parser[Rule] = Identifier  ~ (LPAREN ~> repsep(Identifier, COMMA)<~ RPAREN <~ EQ) ~
+    lazy val Definition: Parser[Rule] = Identifier  ~ ((LPAREN ~> repsep(Identifier, COMMA)<~ RPAREN).? <~ EQ) ~
       Expression <~ SEMI_COLON <~ Spacing ^^ {
-      case name ~ args ~ body => Rule(name.pos, name.name, body, args.map{_.name})
+      case name ~ argsOpt ~ body => Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_.name))
     }  
     
     lazy val Expression: Parser[Exp] = rep1sep(Sequence, BAR) ^^ {ns =>
