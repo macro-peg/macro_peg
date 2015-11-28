@@ -29,7 +29,7 @@ object Ast {
     * @param pos position in source file
     * @param name the name of this rule.  It is referred in body
     * @param body the parsing expression which this rule represents */
-  case class Rule(pos: Pos, name: Symbol, body: Exp, action: Any ==> Any = { case a => a }) extends HasPosition
+  case class Rule(pos: Pos, name: Symbol, body: Exp, args: List[Symbol] = Nil, action: Any ==> Any = { case a => a }) extends HasPosition
   /** This trait represents common super-type of parsing expression AST. */
   sealed trait Exp extends HasPosition
   /** This class represents an AST of sequence (e1 e2).
@@ -69,36 +69,14 @@ object Ast {
   /** This class represents an AST of wild-card character ..
     * @param pos position in source file */
   case class Wildcard(pos: Pos) extends Exp
-  /** This class represents an AST of character class [...].
+
+  /** This class represents an AST of rule calls.
     * @param pos position in source file
-    * @param elems the list of element constituting character class. */
-  case class CharClass(pos: Pos, positive: Boolean, elems: List[CharClassElement]) extends Exp
-  /** This class represents an AST of character set,
-   *  which is created from CharSet.
-   */
-  case class CharSet(pos: Pos, positive: Boolean, elems: Set[Char]) extends Exp
-  /** This class represents an AST of binder,
-   *  which binds the parsing result of exp to name.
-   *  @param pos position in source file
-   *  @param name name of parsing result of e
-   *  @param exp expression evaluated
-   */
-  case class Binder(pos: Pos, name: Symbol, exp: Exp) extends Exp
+    * @param name the name of identifier */
+  case class Call(pos: Pos, name: Symbol, args: List[Exp]) extends Exp
   /** This class represents an AST of identifier.
     * An identifier is used as reference of nonterminal.
     * @param pos position in source file
     * @param name the name of identifier */
   case class Ident(pos: Pos, name: Symbol) extends Exp
-  /** This class represents an AST of backward-reference.
-    * @param pos position in source file
-    * @param name the name of backward-reference */
-  case class Backref(pos: Pos, name: Symbol) extends Exp
-  /** This trait represents common super-type of element in character class. */
-  sealed trait CharClassElement
-  /** An element of character class representing one character. */
-  case class OneChar(ch: Char) extends CharClassElement
-  /** An element of character class representing characters in this range.
-    * @param from start of the range
-    * @param to end of the range */
-  case class CharRange(from: Char, to: Char) extends CharClassElement
 }

@@ -39,9 +39,10 @@ object HOPEGParser {
     lazy val GRAMMER: Parser[Grammar] = (loc ~ Expression <~ (SEMI_COLON <~ Spacing)) ~ Definition.* <~ EndOfFile ^^ {
       case (pos ~ e) ~ rules => Grammar(Pos(pos.line, pos.column), StartRuleName, Rule(Pos(pos.line, pos.column), StartRuleName, e)::rules)
     }
-    lazy val Definition: Parser[Rule] = (Identifier <~ EQ) ~ 
+
+    lazy val Definition: Parser[Rule] = Identifier  ~ (LPAREN ~> repsep(Identifier, COMMA)<~ RPAREN <~ EQ) ~
       Expression <~ SEMI_COLON <~ Spacing ^^ {
-      case n ~ b => Rule(n.pos, n.name, b)
+      case name ~ args ~ body => Rule(name.pos, name.name, body, args.map{_.name})
     }  
     
     lazy val Expression: Parser[Exp] = rep1sep(Sequence, BAR) ^^ {ns =>
@@ -62,17 +63,9 @@ object HOPEGParser {
     | Primary
     )
     lazy val Primary: Parser[Exp] = (
-      (chr('#') ~> chr('(')) ~> Identifier ~ 
-      opt(chr(':') ~> chr(':') ~> Expression | chr(':') ~> Identifier) <~ chr(')') ^^ { 
-        case ident ~ Some(exp) => Binder(ident.pos, ident.name, exp)
-        case ident ~ None => ident
-      }
+      Identifier ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Pos(name.pos.line, name.pos.column), name.name, params) }
+    | Identifier
     | OPEN ~> Expression <~ CLOSE
-    | (chr('#') ~> chr('#') ~> chr('(')) ~> Identifier <~ chr(')') ^^ {ident => Backref(ident.pos, ident.name)}
-    | CLASS
-    | loc <~ DOLLAR ^^ { case pos => 
-        val p = Pos(pos.line, pos.column); NotPred(p, Wildcard(p))
-      }
     | loc <~ DOT ^^ { case pos => Wildcard(Pos(pos.line, pos.column)) }
     | loc <~ chr('_') ^^ { case pos => Str(Pos(pos.line, pos.column), "") }
     | Literal
@@ -86,19 +79,7 @@ object HOPEGParser {
     lazy val Literal: Parser[Str] = loc ~ CHAR ^^ {
       case pos ~ c => Str(Pos(pos.line, pos.column), "" + c )
     }
-    lazy val CLASS: Parser[CharClass] = {
-      (loc <~ chr('[')) ~ opt(chr('^')) ~ ((not(chr(']')) ~> Range).* <~ ']' ~> Spacing) ^^ {
-        //negative character class
-        case (pos ~ Some(_) ~ rs) => CharClass(Pos(pos.line, pos.column), false, rs)
-        //positive character class
-        case (pos ~ None ~ rs) => CharClass(Pos(pos.line, pos.column), true, rs)
-      }
-    }
-    lazy val Range: Parser[CharClassElement] = (
-      CHAR ~ '-' ~ CHAR ^^ { case f~_~t => CharRange(f, t) }
-    | CHAR ^^ { case c => OneChar(c) }
-    )
-    private val META_CHARS = List('$','|','&','!','?','*','+','(',')','[',']',':',';','=','#','\'','"','\\')
+    private val META_CHARS = List('|','&','!','?','*','+','(',')',';','=','\'','"','\\')
     lazy val META: Parser[Char] = cset(META_CHARS:_*)
     lazy val HEX: Parser[Char] = crange('0','9') | crange('a', 'f')
     lazy val CHAR: Parser[Char] = ( 
@@ -116,7 +97,9 @@ object HOPEGParser {
       }
     | not(META, " meta character " + META_CHARS.mkString("[",",","]") + " is not expected") ~>  any ^^ { case c => c}
     )
-    lazy val DOLLAR = chr('$')
+    lazy val LPAREN = chr('(')
+    lazy val RPAREN = chr(')')
+    lazy val COMMA = chr(',')
     lazy val LT = chr('<')
     lazy val GT = chr('>')
     lazy val COLON = chr(':')
