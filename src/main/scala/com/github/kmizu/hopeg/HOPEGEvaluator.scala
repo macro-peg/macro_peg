@@ -27,7 +27,7 @@ class HOPEGEvaluator(grammar: Ast.Grammar) {
         case Some(in) => None
         case None => Some(input)
       }
-    case Ast.Call(pos, name, args) =>
+    case Ast.Call(pos, name, params) =>
       None
     case Ast.Ident(pos, name) =>
       val (Nil, body) = rules(name)
