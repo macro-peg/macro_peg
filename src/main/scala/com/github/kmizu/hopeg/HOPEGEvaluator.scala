@@ -29,7 +29,8 @@ class HOPEGEvaluator(grammar: Ast.Grammar) {
       }
     case Ast.Call(pos, name, params) =>
       val (args, body) = rules(name)
-      evaluate(input, body, args.zip(params).toMap)
+      val insts = params.map(p => extract(p, bindings))
+      evaluate(input, body, args.zip(insts).toMap)
     case Ast.Ident(pos, name) =>
       val body = bindings.get(name).getOrElse {
         val (Nil, body) = rules(name)
@@ -58,5 +59,30 @@ class HOPEGEvaluator(grammar: Ast.Grammar) {
       if (input.startsWith(target)) Some(input.substring(target.length)) else None
     case Ast.Wildcard(pos) =>
       if (input.length >= 1) Some(input.substring(1)) else None
+  }
+
+  def extract(exp: Ast.Exp, bindings: Map[Symbol, Ast.Exp]): Ast.Exp = exp match {
+    case Ast.Alt(pos, l, r) =>
+      Ast.Alt(pos, extract(l, bindings), extract(r, bindings))
+    case Ast.Seq(pos, l, r) =>
+      Ast.Seq(pos, extract(l, bindings), extract(r, bindings))
+    case Ast.AndPred(pos, body) =>
+      Ast.AndPred(pos, extract(body, bindings))
+    case Ast.NotPred(pos, body) =>
+      Ast.NotPred(pos, extract(body, bindings))
+    case Ast.Call(pos, name, params) =>
+      Ast.Call(pos, name, params.map(r => extract(r, bindings)))
+    case Ast.Ident(pos, name) =>
+      bindings.get(name).getOrElse(Ast.Ident(pos, name))
+    case Ast.Opt(pos, body) =>
+      Ast.Opt(pos, extract(body, bindings))
+    case Ast.Rep0(pos, body) =>
+      Ast.Rep0(pos, extract(body, bindings))
+    case Ast.Rep1(pos, body) =>
+      Ast.Rep1(pos, extract(body, bindings))
+    case Ast.Str(pos, target) =>
+      Ast.Str(pos, target)
+    case Ast.Wildcard(pos) =>
+      Ast.Wildcard(pos)
   }
 }
