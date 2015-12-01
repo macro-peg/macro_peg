@@ -11,42 +11,46 @@ class HOPEGEvaluator(grammar: Ast.Grammar) {
   }
   def evaluate(input: String, start: Symbol): Option[String] = {
     val (Nil, body) = rules(start)
-    evaluate(input, body)
+    evaluate(input, body, Map.empty)
   }
 
-  def evaluate(input: String, exp: Ast.Exp): Option[String] = exp match {
+  def evaluate(input: String, exp: Ast.Exp, bindings: Map[Symbol, Ast.Exp]): Option[String] = exp match {
     case Ast.Alt(pos, l, r) =>
-      evaluate(input, l).orElse(evaluate(input, r))
+      evaluate(input, l, bindings).orElse(evaluate(input, r, bindings))
     case Ast.Seq(pos, l, r) =>
-      for(in1 <- evaluate(input, l);
-          in2 <- evaluate(in1, r)) yield in2
+      for(in1 <- evaluate(input, l, bindings);
+          in2 <- evaluate(in1, r, bindings)) yield in2
     case Ast.AndPred(pos, body) =>
-      evaluate(input, body).map{_ => input}
+      evaluate(input, body, bindings).map{_ => input}
     case Ast.NotPred(pos, body) =>
-      evaluate(input, body) match {
+      evaluate(input, body, bindings) match {
         case Some(in) => None
         case None => Some(input)
       }
     case Ast.Call(pos, name, params) =>
-      None
+      val (args, body) = rules(name)
+      evaluate(input, body, args.zip(params).toMap)
     case Ast.Ident(pos, name) =>
-      val (Nil, body) = rules(name)
-      evaluate(input, body)
+      val body = bindings.get(name).getOrElse {
+        val (Nil, body) = rules(name)
+        body
+      }
+      evaluate(input, body, bindings)
     case Ast.Opt(pos, body) =>
-      evaluate(input, body).orElse(Some(input))
+      evaluate(input, body, bindings).orElse(Some(input))
     case Ast.Rep0(pos, body) =>
       var in = input
       var result: Option[String] = None
-      while({result = evaluate(in, body); result != None}) {
+      while({result = evaluate(in, body, bindings); result != None}) {
         in = result.get
       }
       Some(in)
     case Ast.Rep1(pos, body) =>
       var in = input
-      var result = evaluate(in, body)
+      var result = evaluate(in, body, bindings)
       if(result.isEmpty) return None
       in = result.get
-      while({result = evaluate(in, body); result != None}) {
+      while({result = evaluate(in, body, bindings); result != None}) {
         in = result.get
       }
       Some(in)

@@ -7,10 +7,10 @@ object HOPEGRunner {
   def main(args: Array[String]): Unit = {
     val grammar = HOPEGParser.parse(
       """
-        |S="AB" !. | "CD";
+        |S = REP("a") !.; REP(s) = s*;
       """.stripMargin)
-    println(grammar)
     val evaluator = new HOPEGEvaluator(grammar)
-    println(evaluator.evaluate("AB", 'S))
+    val input = "aaaaa"
+    println(evaluator.evaluate("aaaaa", 'S).map{in => s"matched to ${input}"}.getOrElse{s"not matched to ${input}"})
   }
 }
