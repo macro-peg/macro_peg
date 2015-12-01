@@ -25,7 +25,6 @@ object HOPEGParser {
   
   private object ParserCore extends Parsers {
     type Elem = Char
-    val StartRuleName: Symbol = 'S
     private val any: Parser[Char] = elem(".", c => c != CharSequenceReader.EofCh)
     private def chr(c: Char): Parser[Char] = c
     private def crange(f: Char, t: Char): Parser[Char] = elem("[]", c => f <= c && c <= t)
@@ -36,13 +35,14 @@ object HOPEGParser {
     private def not[T](p: => Parser[T], msg: String): Parser[Unit] = {
       not(p) | failure(msg)
     }
-    lazy val GRAMMER: Parser[Grammar] = (loc ~ Expression <~ (SEMI_COLON <~ Spacing)) ~ Definition.* <~ EndOfFile ^^ {
-      case (pos ~ e) ~ rules => Grammar(Pos(pos.line, pos.column), StartRuleName, Rule(Pos(pos.line, pos.column), StartRuleName, e)::rules)
+    lazy val GRAMMAR: Parser[Grammar] = (loc <~ Spacing) ~ Definition.* <~ EndOfFile ^^ {
+      case pos ~ rules => Grammar(Pos(pos.line, pos.column), rules)
     }
 
-    lazy val Definition: Parser[Rule] = Identifier  ~ ((LPAREN ~> repsep(Identifier, COMMA)<~ RPAREN).? <~ EQ) ~
-      Expression <~ SEMI_COLON <~ Spacing ^^ {
-      case name ~ argsOpt ~ body => Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_.name))
+    lazy val Definition: Parser[Rule] = Identifier  ~ ((LPAREN ~> repsep(Identifier, COMMA) <~ RPAREN).? <~ EQ) ~
+      Expression <~ SEMI_COLON ^^ {
+      case name ~ argsOpt ~ body =>
+        Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_.name))
     }  
     
     lazy val Expression: Parser[Exp] = rep1sep(Sequence, BAR) ^^ {ns =>
@@ -71,13 +71,13 @@ object HOPEGParser {
     | Literal
     )
     lazy val loc: Parser[Position] = Parser{reader => Success(reader.pos, reader)}    
-    lazy val Identifier: Parser[Ident] = loc ~ IdentStart ~ IdentCont.* ^^ {
+    lazy val Identifier: Parser[Ident] = loc ~ IdentStart ~ IdentCont.* <~Spacing ^^ {
       case pos ~ s ~ c => Ident(Pos(pos.line, pos.column), Symbol("" + s + c.foldLeft("")(_ + _)))
     }
     lazy val IdentStart: Parser[Char] = crange('a','z') | crange('A','Z') | '_'
     lazy val IdentCont: Parser[Char] = IdentStart | crange('0','9')
-    lazy val Literal: Parser[Str] = loc ~ CHAR ^^ {
-      case pos ~ c => Str(Pos(pos.line, pos.column), "" + c )
+    lazy val Literal: Parser[Str] = loc ~ (chr('\"') ~> CHAR.* <~ chr('\"')) <~ Spacing ^^ {
+      case pos ~ cs => Str(Pos(pos.line, pos.column), cs.mkString)
     }
     private val META_CHARS = List('|','&','!','?','*','+','(',')',';','=','\'','"','\\')
     lazy val META: Parser[Char] = cset(META_CHARS:_*)
@@ -97,23 +97,23 @@ object HOPEGParser {
       }
     | not(META, " meta character " + META_CHARS.mkString("[",",","]") + " is not expected") ~>  any ^^ { case c => c}
     )
-    lazy val LPAREN = chr('(')
-    lazy val RPAREN = chr(')')
-    lazy val COMMA = chr(',')
-    lazy val LT = chr('<')
-    lazy val GT = chr('>')
-    lazy val COLON = chr(':')
-    lazy val SEMI_COLON = chr(';')
-    lazy val EQ = chr('=')
-    lazy val BAR = chr('|')
-    lazy val AND = chr('&')
-    lazy val NOT = chr('!')
-    lazy val QUESTION = chr('?')
-    lazy val STAR = chr('*')
-    lazy val PLUS = chr('+')
-    lazy val OPEN = chr('(')
-    lazy val CLOSE = chr(')')
-    lazy val DOT = chr('.')
+    lazy val LPAREN = chr('(') <~ Spacing
+    lazy val RPAREN = chr(')') <~ Spacing
+    lazy val COMMA = chr(',') <~ Spacing
+    lazy val LT = chr('<') <~ Spacing
+    lazy val GT = chr('>') <~ Spacing
+    lazy val COLON = chr(':') <~ Spacing
+    lazy val SEMI_COLON = chr(';') <~ Spacing
+    lazy val EQ = chr('=') <~ Spacing
+    lazy val BAR = chr('|') <~ Spacing
+    lazy val AND = chr('&') <~ Spacing
+    lazy val NOT = chr('!') <~ Spacing
+    lazy val QUESTION = chr('?') <~ Spacing
+    lazy val STAR = chr('*') <~ Spacing
+    lazy val PLUS = chr('+') <~ Spacing
+    lazy val OPEN = chr('(') <~ Spacing
+    lazy val CLOSE = chr(')') <~ Spacing
+    lazy val DOT = chr('.') <~ Spacing
     lazy val Spacing = (Space | Comment).*
     lazy val Comment = (
       chr('/') ~ chr('/') ~ (not(EndOfLine) ~ any).* ~ EndOfLine
@@ -130,14 +130,15 @@ object HOPEGParser {
    * @return `Grammar` instance
    */
   def parse(fileName: String, content: java.io.Reader): Grammar = {
-    ParserCore.GRAMMER(StreamReader(content)) match {
+    ParserCore.GRAMMAR(StreamReader(content)) match {
       case ParserCore.Success(node, _) => node
-      case ParserCore.Failure(msg, rest) => 
+      case ParserCore.Failure(msg, rest) =>
         val pos = rest.pos
+        println(pos)
         throw new ParseException(Pos(pos.line, pos.column), msg)
       case ParserCore.Error(msg, rest) =>
         val pos = rest.pos
-        throw new ParseException(Pos(pos.line, pos.column), msg)        
+        throw new ParseException(Pos(pos.line, pos.column), msg)
     }
   }
 
@@ -149,7 +150,7 @@ object HOPEGParser {
   def parse(pattern: String): Grammar = {
     parse("", new StringReader(pattern))
   }
-  
+
   def main(args: Array[String]) {
     val g = parse(args(0), new FileReader(args(0)))
     println(g)
