@@ -49,6 +49,7 @@ libraryDependencies += ("com.github.kmizu" %% "hopeg" % "0.0.1-SNAPSHOT")
 Then, you can use `HOPEGParser` and `HOPEGEvaluator` as the followings:
 
 ```scala
+import com.github.kmizu.hopeg._
 val grammar = HOPEGParser.parse(
   """
         |S = P("") !.; P(r) = "a" P("a" r) / "b" P("b" r) / r;
