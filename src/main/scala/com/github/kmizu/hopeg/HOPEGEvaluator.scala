@@ -9,12 +9,8 @@ case class HOPEGEvaluator(grammar: Ast.Grammar) {
   private[this] val rules: Map[Symbol, (List[Symbol], Exp)] = {
     grammar.rules.map{r => (r.name, (r.args, r.body))}.toMap
   }
-  def evaluate(input: String, start: Symbol): Option[String] = {
-    val (Nil, body) = rules(start)
-    evaluate(input, body, Map.empty)
-  }
 
-  def evaluate(input: String, exp: Ast.Exp, bindings: Map[Symbol, Ast.Exp]): Option[String] = exp match {
+  private def evaluate(input: String, exp: Ast.Exp, bindings: Map[Symbol, Ast.Exp]): Option[String] = exp match {
     case Ast.Alt(pos, l, r) =>
       evaluate(input, l, bindings).orElse(evaluate(input, r, bindings))
     case Ast.Seq(pos, l, r) =>
@@ -84,5 +80,10 @@ case class HOPEGEvaluator(grammar: Ast.Grammar) {
       Ast.Str(pos, target)
     case Ast.Wildcard(pos) =>
       Ast.Wildcard(pos)
+  }
+
+  def evaluate(input: String, start: Symbol): Option[String] = {
+    val (Nil, body) = rules(start)
+    evaluate(input, body, Map.empty)
   }
 }
