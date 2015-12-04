@@ -45,7 +45,7 @@ object HOPEGParser {
         Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_.name))
     }  
     
-    lazy val Expression: Parser[Exp] = rep1sep(Sequence, BAR) ^^ {ns =>
+    lazy val Expression: Parser[Exp] = rep1sep(Sequence, SLASH) ^^ {ns =>
       val x :: xs = ns; xs.foldLeft(x){(a, y) => Alt(y.pos, a, y)}
     }
     lazy val Sequence: Parser[Exp] = Prefix.+ ^^ {ns =>
@@ -79,7 +79,7 @@ object HOPEGParser {
     lazy val Literal: Parser[Str] = loc ~ (chr('\"') ~> CHAR.* <~ chr('\"')) <~ Spacing ^^ {
       case pos ~ cs => Str(Pos(pos.line, pos.column), cs.mkString)
     }
-    private val META_CHARS = List('|','&','!','?','*','+','(',')',';','=','\'','"','\\')
+    private val META_CHARS = List('/','&','!','?','*','+','(',')',';','=','\'','"','\\')
     lazy val META: Parser[Char] = cset(META_CHARS:_*)
     lazy val HEX: Parser[Char] = crange('0','9') | crange('a', 'f')
     lazy val CHAR: Parser[Char] = ( 
@@ -105,7 +105,7 @@ object HOPEGParser {
     lazy val COLON = chr(':') <~ Spacing
     lazy val SEMI_COLON = chr(';') <~ Spacing
     lazy val EQ = chr('=') <~ Spacing
-    lazy val BAR = chr('|') <~ Spacing
+    lazy val SLASH = chr('/') <~ Spacing
     lazy val AND = chr('&') <~ Spacing
     lazy val NOT = chr('!') <~ Spacing
     lazy val QUESTION = chr('?') <~ Spacing
