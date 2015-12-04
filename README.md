@@ -1,7 +1,8 @@
 ## HOPEG: Higher Order Parsing Expression Grammar [![Build Status](https://travis-ci.org/kmizu/hopeg.png?branch=master)](https://travis-ci.org/kmizu/hopeg)
 
-HOPEG is an extension of PEG by parametric rule (rule constructor).  In this repository, an interpreter
-of HOPEG will be implemented.
+HOPEG is an extension of PEG by parametric rule (rule constructor).  It seems that expressiveness of HOPEG
+is greather than (traditional) PEG since HOPEG can express palindromes.  This repository implements a HOPEG
+interpreter (or matcher).
 
 ### Grammar of HOPEG in Pseudo PEG
 
