@@ -5,7 +5,7 @@ package hopeg
 
 import com.github.kmizu.hopeg.Ast.Exp
 
-class HOPEGEvaluator(grammar: Ast.Grammar) {
+case class HOPEGEvaluator(grammar: Ast.Grammar) {
   private[this] val rules: Map[Symbol, (List[Symbol], Exp)] = {
     grammar.rules.map{r => (r.name, (r.args, r.body))}.toMap
   }

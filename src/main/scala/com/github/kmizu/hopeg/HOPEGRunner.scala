@@ -9,7 +9,7 @@ object HOPEGRunner {
       """
         |S = P("") !.; P(r) = "a" P("a" r) / "b" P("b" r) / r;
       """.stripMargin)
-    val evaluator = new HOPEGEvaluator(grammar)
+    val evaluator = HOPEGEvaluator(grammar)
     var input = "aa"
     println(evaluator.evaluate(input, 'S).map{in => s"matched to ${input}"}.getOrElse{s"not matched to ${input}"})
     input = "bb"
