@@ -1,4 +1,4 @@
-## HOPEG: Higher Order Parsing Expression Grammar
+## HOPEG: Higher Order Parsing Expression Grammar [![Build Status](https://travis-ci.org/kmizu/hopeg.png?branch=master)](https://travis-ci.org/kmizu/hopeg)
 
 HOPEG is an extension of PEG by parametric rule (rule constructor).  In this repository, an interpreter
 of HOPEG will be implemented.
