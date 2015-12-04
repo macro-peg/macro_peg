@@ -10,7 +10,7 @@ case class HOPEGEvaluator(grammar: Ast.Grammar) {
     grammar.rules.map{r => (r.name, (r.args, r.body))}.toMap
   }
 
-  private def evaluate(input: String, exp: Ast.Exp, bindings: Map[Symbol, Ast.Exp]): Option[String] = exp match {
+  private[this] def evaluate(input: String, exp: Ast.Exp, bindings: Map[Symbol, Ast.Exp]): Option[String] = exp match {
     case Ast.Alt(pos, l, r) =>
       evaluate(input, l, bindings).orElse(evaluate(input, r, bindings))
     case Ast.Seq(pos, l, r) =>
@@ -57,7 +57,7 @@ case class HOPEGEvaluator(grammar: Ast.Grammar) {
       if (input.length >= 1) Some(input.substring(1)) else None
   }
 
-  def extract(exp: Ast.Exp, bindings: Map[Symbol, Ast.Exp]): Ast.Exp = exp match {
+  private[this] def extract(exp: Ast.Exp, bindings: Map[Symbol, Ast.Exp]): Ast.Exp = exp match {
     case Ast.Alt(pos, l, r) =>
       Ast.Alt(pos, extract(l, bindings), extract(r, bindings))
     case Ast.Seq(pos, l, r) =>
