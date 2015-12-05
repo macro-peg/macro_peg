@@ -39,11 +39,18 @@ object HOPEGParser {
       case pos ~ rules => Grammar(Pos(pos.line, pos.column), rules)
     }
 
-    lazy val Definition: Parser[Rule] = Identifier  ~ ((LPAREN ~> repsep(Identifier, COMMA) <~ RPAREN).? <~ EQ) ~
+    lazy val Definition: Parser[Rule] = Identifier  ~ ((LPAREN ~> rep1sep(Arg, COMMA) <~ RPAREN).? <~ EQ) ~
       Expression <~ SEMI_COLON ^^ {
       case name ~ argsOpt ~ body =>
-        Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_.name))
-    }  
+        Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_._1.name))
+    }
+
+    lazy val Arg: Parser[(Ident, Option[TypeExpression])] = Identifier ~ (COLON ~> TypeExpression).? ^^ { case id ~ tpe => (id, tpe)}
+
+    lazy val TypeExpression: Parser[TypeExpression] = (
+      (loc <~ QUESTION ^^ { case pos =>  SimpleType(Pos(pos.line, pos.column)) })
+    | ((rep1sep(TypeExpression, COMMA) ~ (loc <~ ARROW) ~ TypeExpression) ^^ { case paramTypes ~ pos ~ resultType => RuleConstructor(Pos(pos.line, pos.column), paramTypes, resultType)})
+    )
     
     lazy val Expression: Parser[Exp] = rep1sep(Sequence, SLASH) ^^ {ns =>
       val x :: xs = ns; xs.foldLeft(x){(a, y) => Alt(y.pos, a, y)}
@@ -114,6 +121,7 @@ object HOPEGParser {
     lazy val OPEN = chr('(') <~ Spacing
     lazy val CLOSE = chr(')') <~ Spacing
     lazy val DOT = chr('.') <~ Spacing
+    lazy val ARROW = chr('-') <~ chr('>') <~ Spacing
     lazy val Spacing = (Space | Comment).*
     lazy val Comment = (
       chr('/') ~ chr('/') ~ (not(EndOfLine) ~ any).* ~ EndOfLine

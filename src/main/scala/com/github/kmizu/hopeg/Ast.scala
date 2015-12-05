@@ -73,9 +73,14 @@ object Ast {
     * @param pos position in source file
     * @param name the name of identifier */
   case class Call(pos: Pos, name: Symbol, args: List[Exp]) extends Exp
+
   /** This class represents an AST of identifier.
     * An identifier is used as reference of nonterminal.
     * @param pos position in source file
     * @param name the name of identifier */
   case class Ident(pos: Pos, name: Symbol) extends Exp
+
+  sealed abstract class TypeExpression(pos: Pos)
+  case class SimpleType(pos: Pos) extends TypeExpression(pos)
+  case class RuleConstructor(pos: Pos, paramTypes: List[TypeExpression], resultType: TypeExpression) extends TypeExpression(pos)
 }
