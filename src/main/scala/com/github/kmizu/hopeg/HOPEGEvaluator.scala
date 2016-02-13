@@ -28,10 +28,10 @@ case class HOPEGEvaluator(grammar: Ast.Grammar) {
       val insts = params.map(p => extract(p, bindings))
       evaluate(input, body, args.zip(insts).toMap)
     case Ast.Ident(pos, name) =>
-      val body = bindings.get(name).getOrElse {
+      val body = bindings.getOrElse(name, {
         val (Nil, body) = rules(name)
         body
-      }
+      })
       evaluate(input, body, bindings)
     case Ast.Opt(pos, body) =>
       evaluate(input, body, bindings).orElse(Some(input))
