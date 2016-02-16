@@ -72,6 +72,8 @@ case class HOPEGEvaluator(grammar: Ast.Grammar) {
       Ast.Call(pos, name, params.map(r => extract(r, bindings)))
     case Ast.Ident(pos, name) =>
       bindings.getOrElse(name, Ast.Ident(pos, name))
+    case Ast.Fun(pos, args, body) =>
+      Ast.Fun(pos, args, body)
     case Ast.Opt(pos, body) =>
       Ast.Opt(pos, extract(body, bindings))
     case Ast.Rep0(pos, body) =>

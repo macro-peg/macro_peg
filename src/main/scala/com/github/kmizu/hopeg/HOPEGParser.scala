@@ -79,6 +79,7 @@ object HOPEGParser {
     lazy val Primary: Parser[Exp] = (
       Identifier ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Pos(name.pos.line, name.pos.column), name.name, params) }
     | Identifier
+    | (OPEN ~> (repsep(Identifier, COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Fun(Pos(loc.line, loc.column), ids.map(_.name), body) }
     | OPEN ~> Expression <~ CLOSE
     | loc <~ DOT ^^ { case pos => Wildcard(Pos(pos.line, pos.column)) }
     | loc <~ chr('_') ^^ { case pos => Str(Pos(pos.line, pos.column), "") }

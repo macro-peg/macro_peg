@@ -18,6 +18,13 @@ object HOPEGRunner {
      |S = APPLY2(ALTER, "a", "b") !.; ALTER(x, y) = x / y; APPLY2(F, x, y) = F(F(x)) ;
      """.stripMargin), "a", "b", "c"
     )
+
+    tryGrammar(
+      "S = F(X) .!; F = (x -> x); ",
+      HOPEGParser.parse("""
+     |S = F((x -> x x x)); F(f) = f("X");
+      """.stripMargin), "XXX", "YYY", "ZZZ"
+    )
   }
 
   def tryGrammar(name: String, grammar: Ast.Grammar, inputs: String*): Unit = {
