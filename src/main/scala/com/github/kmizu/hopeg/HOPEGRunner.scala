@@ -20,7 +20,7 @@ object HOPEGRunner {
     )
 
     tryGrammar(
-      "S = F(X) .!; F = (x -> x); ",
+      "S = F((x -> x x x)) .!; F(f) = f(X);",
       HOPEGParser.parse("""
      |S = F((x -> x x x)); F(f) = f("X");
       """.stripMargin), "XXX", "YYY", "ZZZ"
