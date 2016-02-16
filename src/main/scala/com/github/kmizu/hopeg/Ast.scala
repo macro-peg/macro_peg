@@ -28,7 +28,7 @@ object Ast {
     * @param pos position in source file
     * @param name the name of this rule.  It is referred in body
     * @param body the parsing expression which this rule represents */
-  case class Rule(pos: Pos, name: Symbol, body: Exp, args: List[Symbol] = Nil, action: Any ==> Any = { case a => a }) extends HasPosition
+  case class Rule(pos: Pos, name: Symbol, body: Exp, args: List[Symbol] = Nil) extends HasPosition
   /** This trait represents common super-type of parsing expression AST. */
   sealed trait Exp extends HasPosition
   /** This class represents an AST of sequence (e1 e2).
@@ -80,7 +80,9 @@ object Ast {
     * @param name the name of identifier */
   case class Ident(pos: Pos, name: Symbol) extends Exp
 
-  sealed abstract class TypeExpression(pos: Pos)
-  case class SimpleType(pos: Pos) extends TypeExpression(pos)
-  case class RuleConstructor(pos: Pos, paramTypes: List[TypeExpression], resultType: TypeExpression) extends TypeExpression(pos)
+  sealed abstract class Type(pos: Pos)
+  case class SimpleType(pos: Pos) extends Type(pos)
+  case class RuleType(pos: Pos, paramTypes: List[Type], resultType: Type) extends Type(pos)
+
+  case class Fun(pos: Pos, args: List[Symbol], body: Exp) extends Exp
 }

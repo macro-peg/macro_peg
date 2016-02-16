@@ -45,12 +45,19 @@ object HOPEGParser {
         Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_._1.name))
     }
 
-    lazy val Arg: Parser[(Ident, Option[TypeExpression])] = Identifier ~ (COLON ~> TypeExpression).? ^^ { case id ~ tpe => (id, tpe)}
+    lazy val Arg: Parser[(Ident, Option[Type])] = Identifier ~ (COLON ~> TypeTree).? ^^ { case id ~ tpe => (id, tpe)}
 
-    lazy val TypeExpression: Parser[TypeExpression] = (
-      (loc <~ QUESTION ^^ { case pos =>  SimpleType(Pos(pos.line, pos.column)) })
-    | ((rep1sep(TypeExpression, COMMA) ~ (loc <~ ARROW) ~ TypeExpression) ^^ { case paramTypes ~ pos ~ resultType => RuleConstructor(Pos(pos.line, pos.column), paramTypes, resultType)})
-    )
+    lazy val TypeTree: Parser[Type] = {
+      RuleTypeTree | SimpleTypeTree
+    }
+
+    lazy val RuleTypeTree: Parser[RuleType] = {
+      (OPEN ~> (rep1sep(SimpleTypeTree, COMMA) <~ CLOSE) ~ (loc <~ ARROW) ~ SimpleTypeTree) ^^ { case paramTypes ~ pos ~ resultType => RuleType(Pos(pos.line, pos.column), paramTypes, resultType) }
+    }
+
+    lazy val SimpleTypeTree: Parser[SimpleType] = {
+      loc <~ QUESTION ^^ { case pos => SimpleType(Pos(pos.line, pos.column)) }
+    }
     
     lazy val Expression: Parser[Exp] = rep1sep(Sequence, SLASH) ^^ {ns =>
       val x :: xs = ns; xs.foldLeft(x){(a, y) => Alt(y.pos, a, y)}
