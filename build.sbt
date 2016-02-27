@@ -8,6 +8,12 @@ scalaVersion := "2.11.7"
 
 publishMavenStyle := true
 
+tutSettings
+
+tutSourceDirectory := file("src")/"tut"
+
+tutTargetDirectory := file(".")
+
 val scaladocBranch = settingKey[String]("branch name for scaladoc -doc-source-url")
 
 scaladocBranch := "master"

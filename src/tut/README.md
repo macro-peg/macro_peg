@@ -48,7 +48,7 @@ libraryDependencies += ("com.github.kmizu" %% "hopeg" % "0.0.1-SNAPSHOT")
 
 Then, you can use `HOPEGParser` and `HOPEGEvaluator` as the followings:
 
-```scala
+```tut:silent
 import com.github.kmizu.hopeg._
 val grammar = HOPEGParser.parse(
   """
@@ -59,7 +59,6 @@ val evaluator = HOPEGEvaluator(grammar)
 val input = "aa"
 ```
 
-```scala
-scala> evaluator.evaluate(input, 'S).map{in => s"matched to ${input}"}.getOrElse{s"not matched to ${input}"}
-res0: String = matched to aa
+```tut
+evaluator.evaluate(input, 'S).map{in => s"matched to ${input}"}.getOrElse{s"not matched to ${input}"}
 ```
