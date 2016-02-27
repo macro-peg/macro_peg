@@ -56,10 +56,48 @@ val grammar = HOPEGParser.parse(
   """.stripMargin
 )
 val evaluator = HOPEGEvaluator(grammar)
-val input = "aa"
 ```
 
 ```scala
-scala> evaluator.evaluate(input, 'S).map{in => s"matched to ${input}"}.getOrElse{s"not matched to ${input}"}
-res0: String = matched to aa
+scala> val inputs = List(
+     |   "a", "b", "aa", "bb", "ab", "ba", "aaa", "bbb", "aba", "bab", "abb", "baa", "aab", "bba",
+     |   "aaaa", "bbbb", 
+     |   "aaab", "aaba", "abaa", "baaa",
+     |   "bbba", "bbab", "babb", "abbb",
+     |   "aabb", "abba", "bbaa", "baab", "abab", "baba"
+     | )
+inputs: List[String] = List(a, b, aa, bb, ab, ba, aaa, bbb, aba, bab, abb, baa, aab, bba, aaaa, bbbb, aaab, aaba, abaa, baaa, bbba, bbab, babb, abbb, aabb, abba, bbaa, baab, abab, baba)
+
+scala> inputs.map{input => s"${input} => ${evaluator.evaluate(input, 'S)}"}.mkString("\n")
+res0: String =
+a => None
+b => None
+aa => Some(aa)
+bb => Some(bb)
+ab => None
+ba => None
+aaa => None
+bbb => None
+aba => None
+bab => None
+abb => None
+baa => None
+aab => None
+bba => None
+aaaa => Some(aaaa)
+bbbb => Some(bbbb)
+aaab => None
+aaba => None
+abaa => None
+baaa => None
+bbba => None
+bbab => None
+babb => None
+abbb => None
+aabb => None
+abba => Some(abba)
+bbaa => None
+baab => Some(baab)
+abab => None
+baba => None
 ```

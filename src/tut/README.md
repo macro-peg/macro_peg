@@ -56,9 +56,15 @@ val grammar = HOPEGParser.parse(
   """.stripMargin
 )
 val evaluator = HOPEGEvaluator(grammar)
-val input = "aa"
 ```
 
 ```tut
-evaluator.evaluate(input, 'S).map{in => s"matched to ${input}"}.getOrElse{s"not matched to ${input}"}
+val inputs = List(
+  "a", "b", "aa", "bb", "ab", "ba", "aaa", "bbb", "aba", "bab", "abb", "baa", "aab", "bba",
+  "aaaa", "bbbb", 
+  "aaab", "aaba", "abaa", "baaa",
+  "bbba", "bbab", "babb", "abbb",
+  "aabb", "abba", "bbaa", "baab", "abab", "baba"
+)
+inputs.map{input => s"${input} => ${evaluator.evaluate(input, 'S)}"}.mkString("\n")
 ```
