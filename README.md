@@ -1,4 +1,9 @@
-## HOPEG: Higher Order Parsing Expression Grammar [![Build Status](https://travis-ci.org/kmizu/hopeg.png?branch=master)](https://travis-ci.org/kmizu/hopeg)
+## HOPEG: Higher Order Parsing Expression Grammar
+
+[![Build Status](https://travis-ci.org/kmizu/hopeg.png?branch=master)](https://travis-ci.org/kmizu/hopeg)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/hopeg_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/hopeg_2.11)
+[![Scaladoc](http://javadoc-badge.appspot.com/com.github.kmizu/hopeg_2.11.svg?label=scaladoc)](http://javadoc-badge.appspot.com/com.github.kmizu/hopeg_2.11/index.html#com.github.hopeg.package)
+[![Reference Status](https://www.versioneye.com/java/com.github.kmizu:hopeg_2.11/reference_badge.svg?style=flat)](https://www.versioneye.com/java/com.github.kmizu:hopeg_2.11/references)
 
 HOPEG is an extension of PEG by parametric rule (rule constructor).  It seems that expressiveness of HOPEG
 is greather than (traditional) PEG since HOPEG can express palindromes.  This repository implements a HOPEG
