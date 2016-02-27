@@ -34,16 +34,20 @@ Note that spacing is eliminated.
     
     Identifier <- [a-zA-Z_] ([a-zA-Z0-9_])*;
     
-### Usage (0.0.1-SNAPSHOT)
+### Usage
 
 Note that the behaviour could change.
 
-Add the following lines to your build.sbt file:
+Add the following lines to your build.sbt file (Snaphot version):
 
 ```scala
 resolvers += ("snapshots" at "http://oss.sonatype.org/content/repositories/snapshots")
 
-libraryDependencies += ("com.github.kmizu" %% "hopeg" % "0.0.1-SNAPSHOT")
+libraryDependencies += ("com.github.kmizu" %% "hopeg" % "0.0.2-SNAPSHOT")
+```
+
+```scala
+libraryDependencies += ("com.github.kmizu" %% "hopeg" % "0.0.1")
 ```
 
 Then, you can use `HOPEGParser` and `HOPEGEvaluator` as the followings:
