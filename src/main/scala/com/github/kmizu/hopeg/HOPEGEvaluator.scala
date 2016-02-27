@@ -88,6 +88,6 @@ case class HOPEGEvaluator(grammar: Ast.Grammar) {
 
   def evaluate(input: String, start: Symbol): Option[String] = {
     val body = FUNS(start).asInstanceOf[Ast.Fun].body
-    eval(input, body)
+    eval(input, body).map{str => input.substring(0, input.length - str.length)}
   }
 }
