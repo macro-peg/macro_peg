@@ -94,7 +94,7 @@ object HOPEGParser {
     lazy val Literal: Parser[Str] = loc ~ (chr('\"') ~> CHAR.* <~ chr('\"')) <~ Spacing ^^ {
       case pos ~ cs => Str(Pos(pos.line, pos.column), cs.mkString)
     }
-    private val META_CHARS = List('/','&','!','?','*','+','(',')',';','=','\'','"','\\')
+    private val META_CHARS = List('"','\\')
     lazy val META: Parser[Char] = cset(META_CHARS:_*)
     lazy val HEX: Parser[Char] = crange('0','9') | crange('a', 'f')
     lazy val CHAR: Parser[Char] = ( 
@@ -150,7 +150,6 @@ object HOPEGParser {
       case ParserCore.Success(node, _) => node
       case ParserCore.Failure(msg, rest) =>
         val pos = rest.pos
-        println(pos)
         throw new ParseException(Pos(pos.line, pos.column), msg)
       case ParserCore.Error(msg, rest) =>
         val pos = rest.pos
