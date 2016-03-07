@@ -1,4 +1,9 @@
-## HOPEG: Higher Order Parsing Expression Grammar [![Build Status](https://travis-ci.org/kmizu/hopeg.png?branch=master)](https://travis-ci.org/kmizu/hopeg)
+## HOPEG: Higher Order Parsing Expression Grammar
+ 
+[![Build Status](https://travis-ci.org/kmizu/hopeg.png?branch=master)](https://travis-ci.org/kmizu/hopeg)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/hopeg_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/hopeg_2.11)
+[![Scaladoc](http://javadoc-badge.appspot.com/com.github.kmizu/hopeg_2.11.svg?label=scaladoc)](http://javadoc-badge.appspot.com/com.github.kmizu/hopeg_2.11/index.html#com.github.kmizu.hopeg.package)
+[![Reference Status](https://www.versioneye.com/java/com.github.kmizu:hopeg_2.11/reference_badge.svg?style=flat)](https://www.versioneye.com/java/com.github.kmizu:hopeg_2.11/references)
 
 HOPEG is an extension of PEG by parametric rule (rule constructor).  It seems that expressiveness of HOPEG
 is greather than (traditional) PEG since HOPEG can express palindromes.  This repository implements a HOPEG
@@ -34,16 +39,21 @@ Note that spacing is eliminated.
     
     Identifier <- [a-zA-Z_] ([a-zA-Z0-9_])*;
     
-### Usage (0.0.1-SNAPSHOT)
+### Release Note
+
+#### 0.0.2
+
+* [Fix bug of HOPEGParser](https://github.com/kmizu/hopeg/commit/a7a72bcffd22401b9fec7a71ff2a5992e6fe7448)
+* [Arithmetic HOPEG example](https://github.com/kmizu/hopeg/commit/1aadc5585490a13e6eb7cdbf60547eea1b424052)
+
+### Usage (0.0.2)
 
 Note that the behaviour could change.
 
 Add the following lines to your build.sbt file:
 
 ```scala
-resolvers += ("snapshots" at "http://oss.sonatype.org/content/repositories/snapshots")
-
-libraryDependencies += ("com.github.kmizu" %% "hopeg" % "0.0.1-SNAPSHOT")
+libraryDependencies += ("com.github.kmizu" %% "hopeg" % "0.0.2")
 ```
 
 Then, you can use `HOPEGParser` and `HOPEGEvaluator` as the followings:
