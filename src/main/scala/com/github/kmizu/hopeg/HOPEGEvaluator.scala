@@ -7,7 +7,7 @@ import com.github.kmizu.hopeg.Ast.Exp
 
 case class HOPEGEvaluator(grammar: Ast.Grammar) {
   private val FUNS: Map[Symbol, Ast.Exp] = {
-    grammar.rules.map{r => r.name -> Ast.Fun(r.body.pos, r.args, r.body)}.toMap
+    grammar.rules.map{r => r.name -> (if(r.args.isEmpty) r.body else Ast.Fun(r.body.pos, r.args, r.body))}.toMap
   }
 
   private[this] def eval(input: String, exp: Ast.Exp): Option[String] = {
@@ -87,7 +87,7 @@ case class HOPEGEvaluator(grammar: Ast.Grammar) {
   }
 
   def evaluate(input: String, start: Symbol): Option[String] = {
-    val body = FUNS(start).asInstanceOf[Ast.Fun].body
+    val body = FUNS(start)
     eval(input, body).map{str => input.substring(0, input.length - str.length)}
   }
 }
