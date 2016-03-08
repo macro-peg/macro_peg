@@ -1,6 +1,6 @@
 ## Macro PEG: PEG with macro-like rules
  
-[![Build Status](https://travis-ci.org/kmizu/macro_peg.png?branch=master)](https://travis-ci.org/kmizu/macro_peg)
+[![Build Status](https://travis-ci.org/kmizu/hopeg.png?branch=master)](https://travis-ci.org/kmizu/hopeg)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.11)
 [![Scaladoc](http://javadoc-badge.appspot.com/com.github.kmizu/macro_peg_2.11.svg?label=scaladoc)](http://javadoc-badge.appspot.com/com.github.kmizu/macro_peg_2.11/index.html#com.github.kmizu.macro_peg.package)
 [![Reference Status](https://www.versioneye.com/java/com.github.kmizu:macro_peg_2.11/reference_badge.svg?style=flat)](https://www.versioneye.com/java/com.github.kmizu:macro_peg_2.11/references)
