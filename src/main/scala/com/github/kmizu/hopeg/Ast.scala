@@ -69,6 +69,12 @@ object Ast {
     * @param pos position in source file */
   case class Wildcard(pos: Pos) extends Exp
 
+  /**
+    * This class represents an AST of Debug(e)
+    * @param pos pos position in source file
+    * @param body e */
+  case class Debug(pos: Pos, body: Exp) extends Exp
+
   /** This class represents an AST of rule calls.
     * @param pos position in source file
     * @param name the name of identifier */

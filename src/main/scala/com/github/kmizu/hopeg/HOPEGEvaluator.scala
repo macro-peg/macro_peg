@@ -12,6 +12,9 @@ case class HOPEGEvaluator(grammar: Ast.Grammar) {
 
   private[this] def eval(input: String, exp: Ast.Exp): Option[String] = {
     def evaluateIn(input: String, exp: Ast.Exp, bindings: Map[Symbol, Ast.Exp]): Option[String] = exp match {
+      case Ast.Debug(pos, body) =>
+        println("DEBUG: " + extract(body, bindings))
+        Some(input)
       case Ast.Alt(pos, l, r) =>
         evaluateIn(input, l, bindings).orElse(evaluateIn(input, r, bindings))
       case Ast.Seq(pos, l, r) =>
@@ -60,6 +63,8 @@ case class HOPEGEvaluator(grammar: Ast.Grammar) {
   }
 
   private[this] def extract(exp: Ast.Exp, bindings: Map[Symbol, Ast.Exp]): Ast.Exp = exp match {
+    case Ast.Debug(pos, body) =>
+      Ast.Debug(pos, extract(body, bindings))
     case Ast.Alt(pos, l, r) =>
       Ast.Alt(pos, extract(l, bindings), extract(r, bindings))
     case Ast.Seq(pos, l, r) =>

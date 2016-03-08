@@ -27,6 +27,7 @@ object HOPEGParser {
     type Elem = Char
     private val any: Parser[Char] = elem(".", c => c != CharSequenceReader.EofCh)
     private def chr(c: Char): Parser[Char] = c
+    private def string(s: String): Parser[String] = s.foldLeft(success("")){(p, e) => p ~ e ^^ {case x ~ y => x + y }}
     private def crange(f: Char, t: Char): Parser[Char] = elem("[]", c => f <= c && c <= t)
     private def cset(cs: Char*): Parser[Char] = elem("[]", c => cs.indexWhere(_ == c) >= 0)
     private val escape: Map[Char, Char] = Map(
@@ -77,7 +78,8 @@ object HOPEGParser {
     | Primary
     )
     lazy val Primary: Parser[Exp] = (
-      Identifier ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Pos(name.pos.line, name.pos.column), name.name, params) }
+      (loc <~ Debug) ~ (LPAREN ~> Expression <~ RPAREN) ^^ { case loc ~ body => Ast.Debug(Pos(loc.line, loc.column), body)}
+    | Identifier ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Pos(name.pos.line, name.pos.column), name.name, params) }
     | Identifier
     | (OPEN ~> (repsep(Identifier, COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Fun(Pos(loc.line, loc.column), ids.map(_.name), body) }
     | OPEN ~> Expression <~ CLOSE
@@ -112,6 +114,7 @@ object HOPEGParser {
       }
     | not(META, " meta character " + META_CHARS.mkString("[",",","]") + " is not expected") ~>  any ^^ { case c => c}
     )
+    lazy val Debug = string("Debug") <~ Spacing
     lazy val LPAREN = chr('(') <~ Spacing
     lazy val RPAREN = chr(')') <~ Spacing
     lazy val COMMA = chr(',') <~ Spacing
