@@ -1,33 +1,33 @@
 package com
 package github
 package kmizu
-package hopeg
+package macro_peg
 
-object HOPEGRunner {
+object MacroPEGRunner {
   def main(args: Array[String]): Unit = {
     tryGrammar(
       "palindrome",
-      HOPEGParser.parse("""
+      MacroPEGParser.parse("""
      |S = P("") !.; P(r) = "a" P("a" r) / "b" P("b" r) / r;
      """.stripMargin), "a", "b", "aa", "bb", "ab", "abba", "abbb"
     )
 
     tryGrammar(
       "a / b",
-      HOPEGParser.parse("""
+      MacroPEGParser.parse("""
      |S = APPLY2(ALTER, "a", "b") !.; ALTER(x, y) = x / y; APPLY2(F, x, y) = F(F(x)) ;
      """.stripMargin), "a", "b", "c"
     )
 
     tryGrammar(
       "u rule",
-      HOPEGParser.parse("""
+      MacroPEGParser.parse("""
      |S = u((x -> x), "x"); u(f, x) = f(!x .) (u(f, x))?;
       """.stripMargin), "yy", "x"
     )
     tryGrammar(
        "arithmetic",
-      HOPEGParser.parse(
+      MacroPEGParser.parse(
        """
       |S = Plus0("");
       |// '1'を並べた数で自然数を表すとする。
@@ -70,7 +70,7 @@ object HOPEGRunner {
       """.stripMargin), "1+1=11$", "111+11=11111$", "111+1=11111$")
       tryGrammar(
         "modifiers",
-        HOPEGParser.parse(
+        MacroPEGParser.parse(
         """
           |S = Modifiers(!"") !.;
           |Modifiers(AlreadyLooked) = (!AlreadyLooked) (
@@ -85,7 +85,7 @@ object HOPEGRunner {
   }
 
   def tryGrammar(name: String, grammar: Ast.Grammar, inputs: String*): Unit = {
-    val evaluator = HOPEGEvaluator(grammar)
+    val evaluator = MacroPEGEvaluator(grammar)
     println("grammar: " + name)
     println()
     for(input <- inputs) {

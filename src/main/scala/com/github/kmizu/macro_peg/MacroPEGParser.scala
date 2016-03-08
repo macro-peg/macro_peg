@@ -1,7 +1,7 @@
 package com
 package github
 package kmizu
-package hopeg
+package macro_peg
 
 import scala.util.parsing.combinator._
 import scala.util.parsing.input.{CharSequenceReader, StreamReader}
@@ -9,12 +9,12 @@ import scala.util.parsing.input.Position
 import java.io._
 import Ast._
 /**
-  * This object provides a parser that parses strings in HOPEG and translates
-  * them into ASTs of HOPEG (which is like PEGs).
+  * This object provides a parser that parses strings in Macro PEG and translates
+  * them into ASTs of Macro PEG (which is like PEGs).
   * @author Kota Mizushima
   *
   */
-object HOPEGParser {
+object MacroPEGParser {
 
   /**
    * This exception is thrown in the case of a parsing failure

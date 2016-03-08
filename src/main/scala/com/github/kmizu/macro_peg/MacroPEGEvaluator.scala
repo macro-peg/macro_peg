@@ -1,11 +1,11 @@
 package com
 package github
 package kmizu
-package hopeg
+package macro_peg
 
-import com.github.kmizu.hopeg.Ast.Exp
+import com.github.kmizu.macro_peg.Ast.Exp
 
-case class HOPEGEvaluator(grammar: Ast.Grammar) {
+case class MacroPEGEvaluator(grammar: Ast.Grammar) {
   private val FUNS: Map[Symbol, Ast.Exp] = {
     grammar.rules.map{r => r.name -> (if(r.args.isEmpty) r.body else Ast.Fun(r.body.pos, r.args, r.body))}.toMap
   }

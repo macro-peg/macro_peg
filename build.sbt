@@ -1,6 +1,6 @@
 organization := "com.github.kmizu"
 
-name := "hopeg"
+name := "macro_peg"
 
 version := "0.0.4-SNAPSHOT"
 
@@ -20,7 +20,7 @@ scaladocBranch := "master"
 
 scalacOptions in (Compile, doc) ++= { Seq(
   "-sourcepath", baseDirectory.value.getAbsolutePath,
-  "-doc-source-url", s"https://github.com/kmizu/hopeg/tree/${scaladocBranch.value}€{FILE_PATH}.scala"
+  "-doc-source-url", s"https://github.com/kmizu/macro_peg/tree/${scaladocBranch.value}€{FILE_PATH}.scala"
 )}
 
 testOptions in Test += Tests.Argument("-u", "target/scalatest-reports")
@@ -42,7 +42,7 @@ initialCommands in console += {
 }
 
 pomExtra := (
-  <url>https://github.com/kmizu/hopeg</url>
+  <url>https://github.com/kmizu/macro_peg</url>
   <licenses>
     <license>
       <name>The MIT License</name>
@@ -51,8 +51,8 @@ pomExtra := (
     </license>
   </licenses>
   <scm>
-    <url>git@github.com:kmizu/hopeg.git</url>
-    <connection>scm:git:git@github.com:kmizu/hopeg.git</connection>
+    <url>git@github.com:kmizu/macro_peg.git</url>
+    <connection>scm:git:git@github.com:kmizu/macro_peg.git</connection>
   </scm>
   <developers>
     <developer>

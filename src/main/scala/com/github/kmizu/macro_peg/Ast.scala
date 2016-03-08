@@ -1,7 +1,7 @@
 package com
 package github
 package kmizu
-package hopeg
+package macro_peg
 
 /** This object provides types representing ASTs of extended PEG.
   * It is used as namespace.
