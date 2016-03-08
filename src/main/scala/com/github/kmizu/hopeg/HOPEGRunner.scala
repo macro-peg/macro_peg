@@ -68,6 +68,20 @@ object HOPEGRunner {
       |
       |// a/b=cも同様にチェックできるはず。
       """.stripMargin), "1+1=11$", "111+11=11111$", "111+1=11111$")
+      tryGrammar(
+        "modifiers",
+        HOPEGParser.parse(
+        """
+          |S = Modifiers(!"") !.;
+          |Modifiers(AlreadyLooked) = (!AlreadyLooked) (
+          |    Token("public") Modifiers(AlreadyLooked / "public")
+          |  / Token("static") Modifiers(AlreadyLooked / "static")
+          |  / Token("final") Modifiers(AlreadyLooked / "final")
+          |  / ""
+          |);
+          |Token(t) = t Spacing;
+          |Spacing = " "*;
+      """.stripMargin), "public static final", "public public", "public static public", "final static public", "final final")
   }
 
   def tryGrammar(name: String, grammar: Ast.Grammar, inputs: String*): Unit = {
