@@ -54,27 +54,93 @@ object MacroPEGRunner {
       |  = Left "*" Right "=" Prod;
       |
       """.stripMargin), "1+1=11", "111+11=11111", "111+1=11111",  "111*11=111111", "11*111=111111", "1*111=1")
-      tryGrammar(
-        "modifiers",
-        MacroPEGParser.parse(
+    tryGrammar(
+      "modifiers",
+      MacroPEGParser.parse(
+      """
+    |S = Modifiers(!"", "") !.;
+    |Modifiers(AlreadyLooked, Scope) = (!AlreadyLooked) (
+    |    &(Scope) Token("public") Modifiers(AlreadyLooked / "public", "public")
+    |  / &(Scope) Token("protected") Modifiers(AlreadyLooked / "protected", "protected")
+    |  / &(Scope) Token("private") Modifiers(AlreadyLooked / "private", "private")
+    |  / Token("static") Modifiers(AlreadyLooked / "static", Scope)
+    |  / Token("final") Modifiers(AlreadyLooked / "final", Scope)
+    |  / ""
+    |);
+    |Token(t) = t Spacing;
+    |Spacing = " "*;
+    """.stripMargin), "public static final", "public public", "public static public", "final static public", "final final", "public private", "protected public", "public static")
+    tryGrammar(
+      "subtract",
+      MacroPEGParser.parse(
         """
-          |S = Modifiers(!"", "") !.;
-          |Modifiers(AlreadyLooked, Scope) = (!AlreadyLooked) (
-          |    &(Scope) Token("public") Modifiers(AlreadyLooked / "public", "public")
-          |  / &(Scope) Token("protected") Modifiers(AlreadyLooked / "protected", "protected")
-          |  / &(Scope) Token("private") Modifiers(AlreadyLooked / "private", "private")
-          |  / Token("static") Modifiers(AlreadyLooked / "static", Scope)
-          |  / Token("final") Modifiers(AlreadyLooked / "final", Scope)
-          |  / ""
-          |);
-          |Token(t) = t Spacing;
-          |Spacing = " "*;
-      """.stripMargin), "public static final", "public public", "public static public", "final static public", "final final", "public private", "protected public", "public static")
-      tryGrammar(
-        "identifier",
-        MacroPEGParser.parse("""S = [a-zA-Z_][a-zA-Z0-9_]*;"""),
-        "hoge", "foo", "hoge1", "foo1", "1foo", "2hoge", "123"
-      )
+      |S = ReadRight("") !.;
+      |// the number of occurence of '1 represents a natural number.
+      |// a-b=c
+      |// Essentially, this checks a=b+c.
+      |ReadRight(Right)
+      |  = &("1"* "-" Right "1") ReadRight(Right "1")
+      |  / &("1"* "-" Right "=") ReadDiff(Right, "");
+      |
+      |ReadDiff(Right, Diff)
+      |  = &("1"* "-" Right "=" Diff "1") ReadDiff(Right, Diff "1")
+      |  / &("1"* "-" Right "=" Diff !.) Check(Right, Diff);
+      |
+      |Check(Right, Diff)
+      |  = Right Diff "-" Right "=" Diff;
+      """.stripMargin),
+      "11-1=1", "1-1=", "111-11=1", // should match
+      "111-1=1",  "111-1=111", "1-11=" // should not match
+    )
+
+    tryGrammar(
+      "exponent",
+      MacroPEGParser.parse(
+        """
+      |S = ReadLeft("", "") !.;
+      |// the number of occurence of '1 represents a natural number.
+      |// |Seq| is the length of a sequence Seq.
+      |// ^ is exponent operator
+      |// ReadLeft("", "") checks input is a correct expression a^b=c.
+      |
+      |// Read a.
+      |// LeftAsOnes is a sequence of "1" where |LeftAsOnes| = |a|.
+      |// LeftAsDots is a sequence of . where |LeftAsDots| = |a|.
+      |ReadLeft(LeftAsOnes, LeftAsDots)
+      |  = &(LeftAsOnes "1") ReadLeft(LeftAsOnes "1", LeftAsDots .)
+      |  / &(LeftAsOnes "^") ComputePadding(LeftAsOnes, LeftAsDots, "");
+      |
+      |// Compute Padding which is a sequene of .
+      |// where |Padding| + |LeftAsDots| = |Input|
+      |ComputePadding(LeftAsOnes, LeftAsDots, Padding)
+      |  = &(Padding LeftAsDots .) ComputePadding(LeftAsOnes, LeftAsDots, Padding .)
+      |  / &(Padding LeftAsDots !.) ReadRight(LeftAsOnes, Padding, "", "1");
+      |
+      |// Read b.
+      |// Exp = a^Right.
+      |ReadRight(Left, Padding, Right, Exp)
+      |  = &(Left "^" Right "1") Multiply(Left, Padding, Right "1", Exp, "", "")
+      |  / &(Left "^" Right "=") Check(Left, Right, Exp);
+      |
+      |// Compute Left * OldExp.
+      |// This adds OldExp Left times into Exp.
+      |// I is a loop counter.
+      |Multiply(Left, Padding, Right, OldExp, Exp, I)
+      |  = &(Padding I .) Multiply(Left, Padding, Right, OldExp, Exp OldExp, I .)
+      |  / &(Padding I !.) ReadRight(Left, Padding, Right, Exp);
+      |
+      |// Check whole input.
+      |Check(Left, Right, Exp)
+      |  = Left "^" Right "=" Exp;
+      """.stripMargin),
+      "11^111=11111111", "11^=1", "1^11=1", "^11=", // should match
+      "11^111=1111111",  "11^111=111111111" // should not match
+    )
+    tryGrammar(
+      "identifier",
+      MacroPEGParser.parse("""S = [a-zA-Z_][a-zA-Z0-9_]*;"""),
+      "hoge", "foo", "hoge1", "foo1", "1foo", "2hoge", "123"
+    )
   }
 
   def tryGrammar(name: String, grammar: Ast.Grammar, inputs: String*): Unit = {
