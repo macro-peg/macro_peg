@@ -41,6 +41,12 @@ Note that spacing is eliminated.
     
 ### Release Note
 
+#### 0.0.5
+* [subtract and exponent example](https://github.com/kmizu/macro_peg/commit/c6fcd9c77174400c5629cc3ee5f243ff174f5ea2)
+* [Character class support!](https://github.com/kmizu/macro_peg/commit/753dbca88a64bbba1dd57e4f9ca29e763f25c570)
+* [| is now alias of /](https://github.com/kmizu/macro_peg/commit/11bc7037d5699f9fb4a168aa9801f3f6251f8c8a)
+* [Modifiers + Scope](https://github.com/kmizu/macro_peg/commit/2d523000782ea0b9b3deca3d54cc7fb3cded7657)
+
 #### 0.0.4
 * [HOPEG is now Macro PEG](https://github.com/kmizu/macro_peg/commit/8bd5129ccb6268d09b72ef7460e16b873f0fc3f3)
 * [Debug expression is implemented](https://github.com/kmizu/macro_peg/commit/d013760105974a8446da023147f0cade10679c8a)
@@ -61,7 +67,7 @@ Note that the behaviour could change.
 Add the following lines to your build.sbt file:
 
 ```scala
-libraryDependencies += ("com.github.kmizu" %% "macro_peg" % "0.0.4")
+libraryDependencies += ("com.github.kmizu" %% "macro_peg" % "0.0.5")
 ```
 
 Then, you can use `MacroPEGParser` and `MacroPEGEvaluator` as the followings:
