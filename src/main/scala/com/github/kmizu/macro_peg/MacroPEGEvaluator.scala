@@ -3,8 +3,6 @@ package github
 package kmizu
 package macro_peg
 
-import com.github.kmizu.macro_peg.Ast.Exp
-
 case class MacroPEGEvaluator(grammar: Ast.Grammar) {
   private def expand(node: Ast.Exp): Ast.Exp = node match {
     case Ast.CharClass(pos, positive, elems) =>
