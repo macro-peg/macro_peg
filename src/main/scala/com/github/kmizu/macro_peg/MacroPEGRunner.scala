@@ -29,7 +29,7 @@ object MacroPEGRunner {
        "arithmetic",
       MacroPEGParser.parse(
        """
-      |S = (Plus0("") / Mul0("1")) !.;
+      |S = (Plus0("") / Mul0("")) !.;
       |// the number of occurence of '1 represents a natural number.
       |// a+b=c
       |Plus0(Left) = Plus1(Left, "") / &(Left "1") Plus0(Left "1");
