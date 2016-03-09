@@ -70,6 +70,11 @@ object MacroPEGRunner {
           |Token(t) = t Spacing;
           |Spacing = " "*;
       """.stripMargin), "public static final", "public public", "public static public", "final static public", "final final", "public private", "protected public", "public static")
+      tryGrammar(
+        "identifier",
+        MacroPEGParser.parse("""S = [a-zA-Z_][a-zA-Z0-9_]*;"""),
+        "hoge", "foo", "hoge1", "foo1", "1foo", "2hoge", "123"
+      )
   }
 
   def tryGrammar(name: String, grammar: Ast.Grammar, inputs: String*): Unit = {

@@ -6,8 +6,23 @@ package macro_peg
 import com.github.kmizu.macro_peg.Ast.Exp
 
 case class MacroPEGEvaluator(grammar: Ast.Grammar) {
+  private def expand(node: Ast.Exp): Ast.Exp = node match {
+    case Ast.CharClass(pos, positive, elems) =>
+      Ast.CharSet(pos, positive, elems.foldLeft(Set[Char]()){
+        case (set, Ast.CharRange(f, t)) => (set /: (f to t))((set, c) => set + c)
+        case (set, Ast.OneChar(c)) => set + c
+      })
+    case Ast.Alt(pos, e1, e2) => Ast.Alt(pos, expand(e1), expand(e2))
+    case Ast.Seq(pos, e1, e2) => Ast.Seq(pos, expand(e1), expand(e2))
+    case Ast.Rep0(pos, body) => Ast.Rep0(pos, expand(body))
+    case Ast.Rep1(pos, body) => Ast.Rep1(pos, expand(body))
+    case Ast.Opt(pos, body) => Ast.Opt(pos, expand(body))
+    case Ast.AndPred(pos, body) => Ast.AndPred(pos, expand(body))
+    case Ast.NotPred(pos, body) => Ast.NotPred(pos, expand(body))
+    case e => e
+  }
   private val FUNS: Map[Symbol, Ast.Exp] = {
-    grammar.rules.map{r => r.name -> (if(r.args.isEmpty) r.body else Ast.Fun(r.body.pos, r.args, r.body))}.toMap
+    grammar.rules.map{r => r.name -> (if(r.args.isEmpty) expand(r.body) else Ast.Fun(r.body.pos, r.args, expand(r.body)))}.toMap
   }
 
   private[this] def eval(input: String, exp: Ast.Exp): Option[String] = {
@@ -56,6 +71,9 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
         Some(in)
       case Ast.Str(pos, target) =>
         if (input.startsWith(target)) Some(input.substring(target.length)) else None
+      case Ast.CharSet(_, positive, set) =>
+        if(input == "" || (positive != set(input(0)))) None
+        else Some(input.substring(1))
       case Ast.Wildcard(pos) =>
         if (input.length >= 1) Some(input.substring(1)) else None
     }

@@ -81,6 +81,7 @@ object MacroPEGParser {
       (loc <~ Debug) ~ (LPAREN ~> Expression <~ RPAREN) ^^ { case loc ~ body => Ast.Debug(Pos(loc.line, loc.column), body)}
     | Identifier ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Pos(name.pos.line, name.pos.column), name.name, params) }
     | Identifier
+    | CLASS
     | (OPEN ~> (repsep(Identifier, COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Fun(Pos(loc.line, loc.column), ids.map(_.name), body) }
     | OPEN ~> Expression <~ CLOSE
     | loc <~ DOT ^^ { case pos => Wildcard(Pos(pos.line, pos.column)) }
@@ -96,6 +97,18 @@ object MacroPEGParser {
     lazy val Literal: Parser[Str] = loc ~ (chr('\"') ~> CHAR.* <~ chr('\"')) <~ Spacing ^^ {
       case pos ~ cs => Str(Pos(pos.line, pos.column), cs.mkString)
     }
+    lazy val CLASS: Parser[CharClass] = {
+      (loc <~ chr('[')) ~ opt(chr('^')) ~ ((not(chr(']')) ~> Range).* <~ ']' ~> Spacing) ^^ {
+        //negative character class
+        case (pos ~ Some(_) ~ rs) => CharClass(Pos(pos.line, pos.column), false, rs)
+        //positive character class
+        case (pos ~ None ~ rs) => CharClass(Pos(pos.line, pos.column), true, rs)
+      }
+    }
+    lazy val Range: Parser[CharClassElement] = (
+      CHAR ~ '-' ~ CHAR ^^ { case f~_~t => CharRange(f, t) }
+    | CHAR ^^ { case c => OneChar(c) }
+    )
     private val META_CHARS = List('"','\\')
     lazy val META: Parser[Char] = cset(META_CHARS:_*)
     lazy val HEX: Parser[Char] = crange('0','9') | crange('a', 'f')

@@ -68,6 +68,22 @@ object Ast {
   /** This class represents an AST of wild-card character ..
     * @param pos position in source file */
   case class Wildcard(pos: Pos) extends Exp
+  /** This class represents an AST of character set,
+    *  which is created from CharSet.
+    */
+  case class CharSet(pos: Pos, positive: Boolean, elems: Set[Char]) extends Exp
+  /** This class represents an AST of character class [...].
+    * @param pos position in source file
+    * @param elems the list of element constituting character class. */
+  case class CharClass(pos: Pos, positive: Boolean, elems: List[CharClassElement]) extends Exp
+  /** This trait represents common super-type of element in character class. */
+  sealed trait CharClassElement
+  /** An element of character class representing one character. */
+  case class OneChar(ch: Char) extends CharClassElement
+  /** An element of character class representing characters in this range.
+    * @param from start of the range
+    * @param to end of the range */
+  case class CharRange(from: Char, to: Char) extends CharClassElement
 
   /**
     * This class represents an AST of Debug(e)
