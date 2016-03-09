@@ -60,7 +60,7 @@ object MacroPEGParser {
       loc <~ QUESTION ^^ { case pos => SimpleType(Pos(pos.line, pos.column)) }
     }
     
-    lazy val Expression: Parser[Exp] = rep1sep(Sequence, SLASH) ^^ {ns =>
+    lazy val Expression: Parser[Exp] = rep1sep(Sequence, SLASH | BAR) ^^ {ns =>
       val x :: xs = ns; xs.foldLeft(x){(a, y) => Alt(y.pos, a, y)}
     }
     lazy val Sequence: Parser[Exp] = Prefix.+ ^^ {ns =>
@@ -124,6 +124,7 @@ object MacroPEGParser {
     lazy val SEMI_COLON = chr(';') <~ Spacing
     lazy val EQ = chr('=') <~ Spacing
     lazy val SLASH = chr('/') <~ Spacing
+    lazy val BAR = chr('|') <~ Spacing
     lazy val AND = chr('&') <~ Spacing
     lazy val NOT = chr('!') <~ Spacing
     lazy val QUESTION = chr('?') <~ Spacing
