@@ -58,16 +58,18 @@ object MacroPEGRunner {
         "modifiers",
         MacroPEGParser.parse(
         """
-          |S = Modifiers(!"") !.;
-          |Modifiers(AlreadyLooked) = (!AlreadyLooked) (
-          |    Token("public") Modifiers(AlreadyLooked / "public")
-          |  / Token("static") Modifiers(AlreadyLooked / "static")
-          |  / Token("final") Modifiers(AlreadyLooked / "final")
+          |S = Modifiers(!"", "") !.;
+          |Modifiers(AlreadyLooked, Scope) = (!AlreadyLooked) (
+          |    &(Scope) Token("public") Modifiers(AlreadyLooked / "public", "public")
+          |  / &(Scope) Token("protected") Modifiers(AlreadyLooked / "protected", "protected")
+          |  / &(Scope) Token("private") Modifiers(AlreadyLooked / "private", "private")
+          |  / Token("static") Modifiers(AlreadyLooked / "static", Scope)
+          |  / Token("final") Modifiers(AlreadyLooked / "final", Scope)
           |  / ""
           |);
           |Token(t) = t Spacing;
           |Spacing = " "*;
-      """.stripMargin), "public static final", "public public", "public static public", "final static public", "final final")
+      """.stripMargin), "public static final", "public public", "public static public", "final static public", "final final", "public private", "protected public", "public static")
   }
 
   def tryGrammar(name: String, grammar: Ast.Grammar, inputs: String*): Unit = {
