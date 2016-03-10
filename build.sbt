@@ -2,7 +2,7 @@ organization := "com.github.kmizu"
 
 name := "macro_peg"
 
-version := "0.0.6"
+version := "0.0.7-SNAPSHOT"
 
 scalaVersion := "2.11.8"
 
