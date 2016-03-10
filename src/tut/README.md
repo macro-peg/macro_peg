@@ -11,7 +11,7 @@ interpreter (or matcher).
 
 ### Grammar of Macro PEG in Pseudo PEG
 
-Note that spacing is eliminated.
+Note that spacing is ommited.
 
     Grammer <- Rule* ";";
     
@@ -30,14 +30,20 @@ Note that spacing is eliminated.
     
     Primary <- "(" Expression ")"
              /  Call
+             / Debug
              / Identifier
-             / StringLiteral;
+             / StringLiteral
+             / CharacterClass;
+             
+    Debug <- "Debug" "(" Expression ")";
     
     StringLiteral <- "\\" (!"\\" .) "\\";
     
     Call <- Identifier "(" Expression ("," Expression)* ")";
     
     Identifier <- [a-zA-Z_] ([a-zA-Z0-9_])*;
+    
+    CharacterClass <- "[" "^"? (!"[" .)+ "]"
     
 ### Release Note
 
