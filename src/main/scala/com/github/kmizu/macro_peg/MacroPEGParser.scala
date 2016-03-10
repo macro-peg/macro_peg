@@ -41,7 +41,7 @@ object MacroPEGParser {
     }
 
     lazy val Definition: Parser[Rule] = Identifier  ~ ((LPAREN ~> rep1sep(Arg, COMMA) <~ RPAREN).? <~ EQ) ~
-      Expression <~ SEMI_COLON ^^ {
+      commit(Expression) <~ SEMI_COLON ^^ {
       case name ~ argsOpt ~ body =>
         Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_._1.name))
     }
@@ -153,7 +153,7 @@ object MacroPEGParser {
     )
     lazy val Space = chr(' ') | chr('\t') | EndOfLine
     lazy val EndOfLine = chr('\r') ~ chr('\n') | chr('\n') | chr('\r')
-    lazy val EndOfFile = not(any)
+    lazy val EndOfFile = not(any, "EOF Expected")
   }
 
   /**
