@@ -40,8 +40,7 @@ object MacroPEGParser {
       case pos ~ rules => Grammar(Pos(pos.line, pos.column), rules)
     }
 
-    lazy val Definition: Parser[Rule] = Identifier  ~ ((LPAREN ~> rep1sep(Arg, COMMA) <~ RPAREN).? <~ EQ) ~
-      commit(Expression) <~ SEMI_COLON ^^ {
+    lazy val Definition: Parser[Rule] = Identifier  ~ ((LPAREN ~> rep1sep(Arg, COMMA) <~ RPAREN).? <~ EQ) ~! (Expression <~ SEMI_COLON) ^^ {
       case name ~ argsOpt ~ body =>
         Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_._1.name))
     }
