@@ -13,7 +13,7 @@ object MacroPEGRunner {
     tryGrammar(
       "a / b",
       """
-     |S = APPLY2(ALTER, "a", "b") !.; ALTER(x, y) = x / y; APPLY2(F, x, y) = F(F(x)) ;
+     |S = APPLY2(ALTER, "a", "b") !.; ALTER(x, y) = Debug(x / y) (x / y); APPLY2(F, x, y) = F(x, y) ;
      """.stripMargin, "a", "b", "c"
     )
     tryGrammar(

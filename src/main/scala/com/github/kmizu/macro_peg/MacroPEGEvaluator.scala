@@ -44,6 +44,7 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
         val fun = bindings(name).asInstanceOf[Ast.Fun]
         val args = fun.args
         val body = fun.body
+        if(args.length != params.length) throw EvaluationException(s"args length of $name should be equal to params length")
         val nparams = args.zip(params.map(p => extract(p, bindings))).toMap
         evaluateIn(input, body, bindings ++ nparams)
       case Ast.Ident(pos, name) =>
