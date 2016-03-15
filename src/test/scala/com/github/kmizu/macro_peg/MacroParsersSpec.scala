@@ -44,5 +44,18 @@ class MacroParserSpec extends FunSpec {
       assert(S("ca").drop == ParseSuccess(None, ""))
       assert(S("cb").drop == ParseSuccess(None, ""))
     }
+    it("a^n b^n c^n") {
+      object AnBnCn {
+        lazy val S: P[Any] = (refer(A) ~ !"b").and ~ string("a").+ ~ refer(B) ~ !any
+        lazy val A: P[Any] = "a" ~ refer(A).? ~ "b"
+        lazy val B: P[Any] = "b" ~ refer(B).? ~ "c"
+      }
+      val S = AnBnCn.S
+      assert(S("").drop == ParseFailure("" , ""))
+      assert(S("abc").drop == ParseSuccess(None , ""))
+      assert(S("abb").drop == ParseFailure("", "abb"))
+      assert(S("bba").drop == ParseFailure("", "bba"))
+      assert(S("aabbcc").drop == ParseSuccess(None , ""))
+    }
   }
 }
