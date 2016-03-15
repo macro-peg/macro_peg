@@ -46,6 +46,8 @@ Note that spacing is ommited.
     CharacterClass <- "[" "^"? (!"[" .)+ "]"
     
 ### Release Note
+* [Introduce MacroParsers, parser combinator library for Macro PEG.](https://github.com/kmizu/macro_peg/commit/3866502bf699ff6aac2426fc21a9fa6e97c00d09)
+  * See [tests](https://github.com/kmizu/macro_peg/blob/3866502bf699ff6aac2426fc21a9fa6e97c00d09/src/test/scala/com/github/kmizu/macro_peg/MacroParsersSpec.scala)
 
 #### 0.0.6
 * [More accurate ParseException](https://github.com/kmizu/macro_peg/commit/40f9c1198127307f6f8e7f151c2fa216b0d6dca0)
