@@ -1,4 +1,6 @@
 ## Macro PEG: PEG with macro-like rules
+
+[![Join the chat at https://gitter.im/kmizu/macro_peg](https://badges.gitter.im/kmizu/macro_peg.svg)](https://gitter.im/kmizu/macro_peg?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
  
 [![Build Status](https://travis-ci.org/kmizu/macro_peg.png?branch=master)](https://travis-ci.org/kmizu/macro_peg)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.11)
