@@ -1,6 +1,6 @@
 package com.github.kmizu.macro_peg
 
-import org.scalatest.FunSpec
+import org.scalatest.{DiagrammedAssertions, FunSpec}
 import com.github.kmizu.macro_peg.combinator.MacroParsers._
 
 /**
@@ -18,6 +18,7 @@ class MacroParserSpec extends FunSpec {
       assert(S("b").drop == ParseFailure("", "b"))
       assert(S("ab").drop == ParseFailure("", "ab"))
       assert(S("abba").drop == ParseSuccess(None, ""))
+      assert(S("abbb").drop == ParseFailure("", "abbb"))
     }
   }
 }
