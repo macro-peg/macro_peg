@@ -20,5 +20,29 @@ class MacroParserSpec extends FunSpec {
       assert(S("abba").drop == ParseSuccess(None, ""))
       assert(S("abbb").drop == ParseFailure("", "abbb"))
     }
+    it("sequence without repetition") {
+      object SequenceWithoutRepetition {
+        lazy val S: P[Any] = Modifiers(!"") ~ !any
+        def Modifiers(AlreadyLooked: P[Any]): P[Any] = (!AlreadyLooked) ~ (
+          "a" ~ refer(Modifiers(AlreadyLooked / "a"))
+        / "b" ~ refer(Modifiers(AlreadyLooked / "b"))
+        / "c" ~ refer(Modifiers(AlreadyLooked / "c"))
+        / ""
+        )
+      }
+      val S = SequenceWithoutRepetition.S
+      assert(S("a").drop == ParseSuccess(None, ""))
+      assert(S("b").drop == ParseSuccess(None, ""))
+      assert(S("c").drop == ParseSuccess(None, ""))
+      assert(S("aa").drop == ParseFailure("", "aa"))
+      assert(S("bb").drop == ParseFailure("", "bb"))
+      assert(S("cc").drop == ParseFailure("", "cc"))
+      assert(S("ab").drop == ParseSuccess(None, ""))
+      assert(S("ac").drop == ParseSuccess(None, ""))
+      assert(S("ba").drop == ParseSuccess(None, ""))
+      assert(S("bc").drop == ParseSuccess(None, ""))
+      assert(S("ca").drop == ParseSuccess(None, ""))
+      assert(S("cb").drop == ParseSuccess(None, ""))
+    }
   }
 }
