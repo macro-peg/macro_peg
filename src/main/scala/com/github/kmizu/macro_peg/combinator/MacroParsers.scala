@@ -135,9 +135,9 @@ object MacroParsers {
         ParseFailure(message, next)
     }
   }
-  final case class ReferenceParser[T](pfun: () => MacroParser[T]) extends MacroParser[T] {
+  final case class ReferenceParser[T](delayedParser: () => MacroParser[T]) extends MacroParser[T] {
     override def apply(input: String): ParseResult[T] = reference(input)
-    lazy val reference: MacroParser[T] = pfun()
+    lazy val reference: MacroParser[T] = delayedParser()
   }
   final case object AnyParser extends MacroParser[String] {
     override def apply(input: String): ParseResult[String] = {
