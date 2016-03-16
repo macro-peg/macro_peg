@@ -4,6 +4,8 @@ name := "macro_peg"
 
 scalaVersion := "2.11.8"
 
+mimaPreviousArtifacts := Set("com.github.kmizu" % "macro_peg_2.11" % "0.0.7")
+
 publishMavenStyle := true
 
 tutSettings
