@@ -10,8 +10,7 @@ object MacroParsers {
       * If it was ParseSuccess, result is converted to None,
       * else, message is converted to ""
       * Mainly, this method is used for testing
- *
-      * @return
+      * @return if `this.isInstanceOf[ParseSuccess[T]]` `ParseSuccess(None, next)` else `ParseFailure("", next)`
       */
     def drop: ParseResult[Any] = this match {
       case ParseSuccess(_, next) => ParseSuccess(None, next)
