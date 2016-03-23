@@ -42,7 +42,7 @@ object MacroParsers {
   def range(ranges: Seq[Char]*): RangedParser = RangedParser(ranges:_*)
   implicit def characterRangesToParser(ranges: Seq[Seq[Char]]): RangedParser = range(ranges:_*)
   def refer[T](parser: => MacroParser[T]): ReferenceParser[T] = ReferenceParser(() => parser)
-  def rewritable[T](parser: MacroParser[T]): RewriteableParser[T] = RewriteableParser(parser)
+  def rewritable[T](parser: MacroParser[T]): RewritableParser[T] = RewritableParser(parser)
   final case class StringParser(literal: String) extends MacroParser[String] {
     override def apply(input: Input): ParseResult[String] = {
       if(input.startsWith(literal)) ParseSuccess(literal, input.substring(literal.length))
@@ -156,7 +156,7 @@ object MacroParsers {
       case ParseFailure(message, next) => ParseSuccess("", input)
     }
   }
-  final case class RewriteableParser[T](var p: MacroParser[T]) extends MacroParser[T] {
+  final case class RewritableParser[T](var p: MacroParser[T]) extends MacroParser[T] {
     override def apply(input: Input): ParseResult[T] = p(input)
   }
 }
