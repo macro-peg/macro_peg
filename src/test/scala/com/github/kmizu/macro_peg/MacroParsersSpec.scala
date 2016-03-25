@@ -6,7 +6,7 @@ import com.github.kmizu.macro_peg.combinator.MacroParsers._
 /**
   * Created by Mizushima on 2016/03/15.
   */
-class MacroParserSpec extends FunSpec {
+class MacroParsersSpec extends FunSpec {
   describe("MacroParsers Example") {
     it("palindrome") {
       object Palindrome {
