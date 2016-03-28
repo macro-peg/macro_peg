@@ -36,8 +36,8 @@ object MacroParsers {
   }
   type P[+T] = MacroParser[T]
   def any: AnyParser.type = AnyParser
-  def string(literal: Input): StringParser = StringParser(literal)
-  implicit def stringToParser(literal: Input): StringParser = StringParser(literal)
+  def string(literal: String): StringParser = StringParser(literal)
+  implicit def stringToParser(literal: String): StringParser = StringParser(literal)
   def range(ranges: Seq[Char]*): RangedParser = RangedParser(ranges:_*)
   implicit def characterRangesToParser(ranges: Seq[Seq[Char]]): RangedParser = range(ranges:_*)
   def refer[T](parser: => MacroParser[T]): ReferenceParser[T] = ReferenceParser(() => parser)
