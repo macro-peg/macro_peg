@@ -33,6 +33,7 @@ object MacroParsers {
     def + : MacroParser[List[T]] = Repeat1Parser(this)
     def unary_! : MacroParser[Any] = NotParser(this)
     def and: MacroParser[Any] = AndParser(this)
+    def evalCC[U](cc: String => MacroParser[U]): MacroParser[U] = EvalCC(this, cc)
   }
   type P[+T] = MacroParser[T]
   def any: AnyParser.type = AnyParser
@@ -42,6 +43,16 @@ object MacroParsers {
   implicit def characterRangesToParser(ranges: Seq[Seq[Char]]): RangedParser = range(ranges:_*)
   def refer[T](parser: => MacroParser[T]): ReferenceParser[T] = ReferenceParser(() => parser)
   def rewritable[T](parser: MacroParser[T]): RewritableParser[T] = RewritableParser(parser)
+  final case class EvalCC[T, U](parser: MacroParser[T], cc: String => MacroParser[U]) extends MacroParser[U] {
+    override def apply(input: Input): ParseResult[U] = {
+      parser(input) match {
+        case ParseSuccess(_, next) =>
+          cc(input.substring(0, input.length - next.length))(next)
+        case failure@ParseFailure(_, _) =>
+          failure
+      }
+    }
+  }
   final case class StringParser(literal: String) extends MacroParser[String] {
     override def apply(input: Input): ParseResult[String] = {
       if(input.startsWith(literal)) ParseSuccess(literal, input.substring(literal.length))

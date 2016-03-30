@@ -57,5 +57,18 @@ class MacroParsersSpec extends FunSpec {
       assert(S("bba").drop == ParseFailure("", "bba"))
       assert(S("aabbcc").drop == ParseSuccess(None , ""))
     }
+    it("min-xml") {
+      object MinXML {
+        lazy val I: P[Any] = range('a'to'z','A'to'Z', Seq('_')) ~ range('a'to'z','A'to'Z',Seq('_'),'0'to'9').*
+        lazy val S: P[Any] = "<" ~ I.evalCC {tag =>
+          ">" ~ S.* ~ "</" ~ tag ~ ">"
+        }
+      }
+      val S = MinXML.S
+      assert(S("<foo></foo>").drop == ParseSuccess(None, ""))
+      assert(S("<foo></bar>").drop == ParseFailure("", "bar>"))
+      assert(S("<foo><bar></bar></foo>").drop == ParseSuccess(None, ""))
+      assert(S("<foo><bar></foo></bar>").drop == ParseFailure("",  "<bar></foo></bar>"))
+    }
   }
 }
