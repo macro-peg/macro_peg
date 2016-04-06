@@ -70,5 +70,24 @@ class MacroParsersSpec extends FunSpec {
       assert(S("<foo><bar></bar></foo>").drop == ParseSuccess(None, ""))
       assert(S("<foo><bar></foo></bar>").drop == ParseFailure("",  "<bar></foo></bar>"))
     }
+    it("undefined variable is parse error") {
+      object L {
+        lazy val Spacing: P[Any] = ("\r" | "\t" | " " | "\r" | "\n").*
+        def OPEN: P[Any] = "(" ~ Spacing
+        def CLOSE: P[Any] = ")" ~ Spacing
+        def EQ: P[Any] = "=" ~ Spacing
+        def SEMI_COLON: P[Any] = string(";") ~ Spacing
+        def VAL: P[Any] = "val" ~ Spacing
+        lazy val S: P[Any] = Statements(!"") ~ !any
+        def Statements(table: P[Any]): P[Any] = VAL ~ Identifier.evalCC{i => EQ ~ Expression(table) ~ SEMI_COLON ~ refer(Statements(table | i)).? } / Expression(table) ~ SEMI_COLON ~ refer(Statements(table)).?
+        def Expression(table: P[Any]): P[Any] = refer(Primary(table)) ~ (range(Seq('+','-','*','/')) ~ Spacing ~ refer(Primary(table))).*
+        def Primary(table: P[Any]): P[Any] =  table.and ~ Identifier | IntegerLiteral | (OPEN ~ refer(Expression(table)) ~ CLOSE)
+        lazy val Identifier: P[Any] = range('a'to'z','A'to'Z',Seq('_')) ~ range('a'to'z','A'to'Z','0'to'9',Seq('_')).* ~ Spacing
+        lazy val IntegerLiteral: P[Any] = range('0'to'9').+ ~ Spacing
+      }
+      val S = L.S
+      assert(S("(s * 1);").drop == ParseFailure("", "s * 1);"))
+      assert(S("val s = 1; (s * 1);").drop == ParseSuccess(None, ""))
+    }
   }
 }
