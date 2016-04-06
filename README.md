@@ -48,6 +48,12 @@ Note that spacing is ommited.
     
 ### Release Note
 
+#### 0.0.9
+
+* [Generalize evalCC combinator.](https://github.com/kmizu/macro_peg/commit/fd4525f86d30b3dd6573f33deebdc5f00a08c9a3)
+* ['undefined variable is parse error' example.](https://github.com/kmizu/macro_peg/commit/bbfc7b1bd9c4fdabac9a45050cbe1416ff09db7e)
+* [Fix bug of + combinator.](https://github.com/kmizu/macro_peg/commit/187e4489d062286a66c6dc39c73bd559543d746c)
+
 #### 0.0.8
 * [Introduce backreference as `evalCC` method.](https://github.com/kmizu/macro_peg/commit/91154c8da2148f38434bb91b292b202429d21de1)
 * [pfun -> delayedParser, which is better naming than before(breaking change)](https://github.com/kmizu/macro_peg/commit/e5195caaa0248e8a05233326081de0296ce3dc26)
@@ -87,7 +93,7 @@ Note that the behaviour could change.
 Add the following lines to your build.sbt file:
 
 ```scala
-libraryDependencies += ("com.github.kmizu" %% "macro_peg" % "0.0.8")
+libraryDependencies += ("com.github.kmizu" %% "macro_peg" % "0.0.9")
 ```
 
 Then, you can use `MacroPEGParser` and `MacroPEGEvaluator` as the followings:
