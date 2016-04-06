@@ -23,7 +23,7 @@ object MacroParsers {
   }
   final case class ParseFailure(val message: String, next: Input) extends AbstractFailure
 
-  abstract sealed class MacroParser[+T] {
+  abstract sealed class MacroParser[+T] {self =>
     def apply(input: Input): ParseResult[T]
     def |[U >: T](b: MacroParser[U]): MacroParser[U] = Alternation(this, b)
     def /[U >: T](b: MacroParser[U]): MacroParser[U] = this | b
@@ -34,6 +34,12 @@ object MacroParsers {
     def unary_! : MacroParser[Any] = NotParser(this)
     def and: MacroParser[Any] = AndParser(this)
     def evalCC[U](cc: String => MacroParser[U]): MacroParser[U] = EvalCC(this, cc)
+    def display: MacroParser[T] = new MacroParser[T] {
+      override def apply(input: Input): ParseResult[T] = {
+        println("input: " + input)
+        self(input)
+      }
+    }
   }
   type P[+T] = MacroParser[T]
   def any: AnyParser.type = AnyParser
@@ -112,16 +118,7 @@ object MacroParsers {
           }
           throw new RuntimeException("unreachable code")
         case ParseFailure(message, next) =>
-          ParseFailure(message, next)
-      }
-      while(true) {
-        parser(rest) match {
-          case ParseSuccess(result, next) =>
-            total += result
-            rest = next
-          case ParseFailure(message, next) =>
-            return ParseSuccess(total.toList, rest)
-        }
+          return ParseFailure(message, next)
       }
       throw new RuntimeException("unreachable code")
     }
