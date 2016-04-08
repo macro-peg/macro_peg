@@ -4,7 +4,7 @@ name := "macro_peg"
 
 scalaVersion := "2.11.8"
 
-mimaPreviousArtifacts := Set("com.github.kmizu" % "macro_peg_2.11" % "0.0.7")
+mimaPreviousArtifacts := Set("com.github.kmizu" %% "macro_peg" % "0.0.7")
 
 publishMavenStyle := true
 
@@ -33,7 +33,8 @@ scalacOptions <++= scalaVersion map { v =>
 libraryDependencies ++= Seq(
   "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.3",
   "junit" % "junit" % "4.7" % "test",
-  "org.scalatest" %% "scalatest" % "2.2.0" % "test"
+  "org.scalatest" %% "scalatest" % "2.2.6" % "test",
+  "org.scalacheck" %% "scalacheck" % "1.12.5" % "test"
 )
 
 
