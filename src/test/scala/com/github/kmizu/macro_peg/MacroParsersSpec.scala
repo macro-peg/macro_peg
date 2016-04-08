@@ -2,11 +2,13 @@ package com.github.kmizu.macro_peg
 
 import org.scalatest.{DiagrammedAssertions, FunSpec}
 import com.github.kmizu.macro_peg.combinator.MacroParsers._
+import org.scalatest.prop.GeneratorDrivenPropertyChecks
+import org.scalacheck.{Arbitrary, Gen}
 
 /**
   * Created by Mizushima on 2016/03/15.
   */
-class MacroParsersSpec extends FunSpec {
+class MacroParsersSpec extends FunSpec with DiagrammedAssertions with GeneratorDrivenPropertyChecks {
   describe("MacroParsers Example") {
     it("palindrome") {
       object Palindrome {
@@ -19,6 +21,15 @@ class MacroParsersSpec extends FunSpec {
       assert(S("ab").drop == ParseFailure("", "ab"))
       assert(S("abba").drop == ParseSuccess(None, ""))
       assert(S("abbb").drop == ParseFailure("", "abbb"))
+      val gen = for {
+        s1 <- Gen.listOf(Gen.oneOf('a', 'b'))
+        s = s1.mkString
+        s2 <- s + s.reverse
+      } yield s2
+
+      forAll(gen) {
+        case p => assert(S(p).drop == ParseSuccess(None, ""))
+      }
     }
     it("sequence without repetition") {
       object SequenceWithoutRepetition {
