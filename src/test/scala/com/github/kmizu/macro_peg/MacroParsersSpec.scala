@@ -54,6 +54,19 @@ class MacroParsersSpec extends FunSpec with DiagrammedAssertions with GeneratorD
       assert(S("bc").drop == ParseSuccess(None, ""))
       assert(S("ca").drop == ParseSuccess(None, ""))
       assert(S("cb").drop == ParseSuccess(None, ""))
+
+      val src = Seq("a", "b", "c")
+      val gen = for {
+        x <- Gen.oneOf[String](src)
+        src2 = src.filterNot(_ == x)
+        y <- Gen.oneOf[String](src2)
+        src3 = src2.filterNot(_ == y)
+        z <- Gen.oneOf(src3)
+        result = List(x, y, z).mkString
+      } yield result
+      forAll(gen) {
+        case g => assert(S(g).drop == ParseSuccess(None, ""))
+      }
     }
     it("a^n b^n c^n") {
       object AnBnCn {
