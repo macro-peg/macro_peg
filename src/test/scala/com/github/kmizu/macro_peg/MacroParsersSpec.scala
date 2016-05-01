@@ -80,6 +80,16 @@ class MacroParsersSpec extends FunSpec with DiagrammedAssertions with GeneratorD
       assert(S("abb").drop == ParseFailure("", "abb"))
       assert(S("bba").drop == ParseFailure("", "bba"))
       assert(S("aabbcc").drop == ParseSuccess(None , ""))
+
+      val gen = for {
+        n <- Gen.choose(1, 10)
+        a <- Gen.listOfN(n, Gen.const("a"))
+        b <- Gen.listOfN(n, Gen.const("b"))
+        c <- Gen.listOfN(n, Gen.const("c"))
+      } yield (a ++ b ++ c).mkString
+      forAll(gen) {
+        case g => assert(S(g).drop == ParseSuccess(None, ""))
+      }
     }
     it("min-xml") {
       object MinXML {
