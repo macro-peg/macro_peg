@@ -5,9 +5,6 @@ import com.github.kmizu.macro_peg.combinator.MacroParsers._
 import org.scalatest.prop.GeneratorDrivenPropertyChecks
 import org.scalacheck.{Arbitrary, Gen}
 
-/**
-  * Created by Mizushima on 2016/03/15.
-  */
 class MacroParsersSpec extends FunSpec with DiagrammedAssertions with GeneratorDrivenPropertyChecks {
   describe("MacroParsers Example") {
     it("palindrome") {
