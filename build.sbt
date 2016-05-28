@@ -39,7 +39,9 @@ libraryDependencies ++= Seq(
 
 
 initialCommands in console += {
-  Iterator().map("import "+).mkString("\n")
+  Iterator(
+    "com.github.kmizu.macro_peg.combinator.MacroParsers._"
+  ).map("import "+).mkString("\n")
 }
 
 pomExtra := (
