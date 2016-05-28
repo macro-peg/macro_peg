@@ -6,6 +6,11 @@ package macro_peg
 object MacroPEGRunner {
   def main(args: Array[String]): Unit = {
     tryGrammar(
+      "a+b+...=z",
+      """S = A !.; A = "1" A "1" / "+" A / "=";""",
+      "1+1=11","11+1=111","11+1=1", "11+11+11=111111"
+    )
+    tryGrammar(
       "palindrome",
       """S = P("") !.; P(r) = "a" P("a" r) / "b" P("b" r) / r;""", "a", "b", "aa", "bb", "ab", "abba", "abbb"
     )
