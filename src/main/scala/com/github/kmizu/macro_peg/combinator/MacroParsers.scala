@@ -42,12 +42,14 @@ object MacroParsers {
         self(input)
       }
     }
-    def mapping[U](function: T => U): MacroParser[U] = MappingParser(this, function)
+    def map[U](function: T => U): MacroParser[U] = MappingParser(this, function)
   }
   type P[+T] = MacroParser[T]
   def any: AnyParser.type = AnyParser
   def string(literal: String): StringParser = StringParser(literal)
-  implicit def stringToParser(literal: String): StringParser = StringParser(literal)
+  implicit class RichString(val self: String) extends AnyVal {
+    def s: StringParser = StringParser(self)
+  }
   def range(ranges: Seq[Char]*): RangedParser = RangedParser(ranges:_*)
   implicit def characterRangesToParser(ranges: Seq[Seq[Char]]): RangedParser = range(ranges:_*)
   def refer[T](parser: => MacroParser[T]): ReferenceParser[T] = ReferenceParser(() => parser)
