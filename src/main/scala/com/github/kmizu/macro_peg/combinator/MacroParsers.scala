@@ -4,6 +4,8 @@ import scala.collection.mutable.ListBuffer
 
 object MacroParsers {
   type Input = String
+  case class ~~[+A, +B](_1: A, _2: B)
+  type ~[+A, +B] = A ~~ B
   abstract sealed class ParseResult[+T] {
     /**
       * Drop extra information from this ParseResult.
@@ -27,7 +29,7 @@ object MacroParsers {
     def apply(input: Input): ParseResult[T]
     def |[U >: T](b: MacroParser[U]): MacroParser[U] = Alternation(this, b)
     def /[U >: T](b: MacroParser[U]): MacroParser[U] = this | b
-    def ~[U](b: MacroParser[U]): MacroParser[(T, U)] = Sequence(this, b)
+    def ~[U](b: MacroParser[U]): MacroParser[T ~ U] = Sequence(this, b)
     def ? : MacroParser[Option[T]] = OptionParser(this)
     def * : MacroParser[List[T]] = RepeatParser(this)
     def + : MacroParser[List[T]] = Repeat1Parser(this)
@@ -40,7 +42,7 @@ object MacroParsers {
         self(input)
       }
     }
-    def then[U](function: T => U): MacroParser[U] = MappingParser(this, function)
+    def mapping[U](function: T => U): MacroParser[U] = MappingParser(this, function)
   }
   type P[+T] = MacroParser[T]
   def any: AnyParser.type = AnyParser
@@ -145,12 +147,12 @@ object MacroParsers {
       case ParseFailure(message, next) => b(input)
     }
   }
-  final case class Sequence[T, U](a: MacroParser[T], b: MacroParser[U]) extends MacroParser[(T, U)] {
-    override def apply(input: Input): ParseResult[(T, U)] = a(input) match {
+  final case class Sequence[T, U](a: MacroParser[T], b: MacroParser[U]) extends MacroParser[T ~ U] {
+    override def apply(input: Input): ParseResult[T ~ U] = a(input) match {
       case ParseSuccess(result1, next1) =>
         b(next1) match {
           case ParseSuccess(result2, next2) =>
-            ParseSuccess((result1, result2), next2)
+            ParseSuccess(~~(result1, result2), next2)
           case ParseFailure(message, next2) =>
             ParseFailure(message, next2)
         }
