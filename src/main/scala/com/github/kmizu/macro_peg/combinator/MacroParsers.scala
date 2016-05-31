@@ -40,6 +40,7 @@ object MacroParsers {
         self(input)
       }
     }
+    def then[U](function: T => U): MacroParser[U] = MappingParser(this, function)
   }
   type P[+T] = MacroParser[T]
   def any: AnyParser.type = AnyParser
@@ -85,6 +86,16 @@ object MacroParsers {
       parser(input) match {
         case ParseSuccess(result, next) => ParseSuccess(Some(result), next)
         case ParseFailure(message, next) => ParseSuccess(None, next)
+      }
+    }
+  }
+  final case class MappingParser[T, U](parser: MacroParser[T], function: T => U) extends MacroParser[U] {
+    override def apply(input: Input): ParseResult[U] = {
+      parser(input) match {
+        case ParseSuccess(result, next) =>
+          ParseSuccess(function(result), next)
+        case ParseFailure(message, next) =>
+          ParseFailure(message, next)
       }
     }
   }
