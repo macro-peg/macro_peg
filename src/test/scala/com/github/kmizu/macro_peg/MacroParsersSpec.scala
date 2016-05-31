@@ -144,6 +144,23 @@ class MacroParsersSpec extends FunSpec with DiagrammedAssertions with GeneratorD
       assert(S("1+2*3") == ParseSuccess(7, ""))
       assert(S("(1+2)*3") == ParseSuccess(9, ""))
       assert(S("(2*4)/2") == ParseSuccess(4, ""))
+      val gen = for {
+        a <- Gen.chooseNum(0, 100)
+        b <- Gen.chooseNum(0, 100)
+        c <- Gen.chooseNum(0, 100)
+        d <- Gen.chooseNum(0, 100)
+        o <- Gen.oneOf("+", "-", "*")
+      } yield (a, b, c, d, o)
+
+      forAll(gen) { case (a, b, c, d, o) =>
+          val (expected, input) = o match {
+            case "+" => (a + b + c + d, s"${a}+${b}+${c}+${d}")
+            case "-" => (a - b - c - d, s"${a}-${b}-${c}-${d}")
+            case "*" => (a * b * c * d, s"${a}*${b}*${c}*${d}")
+            case "/" => (a / b / c / d, s"${a}/${b}/${c}/${d}")
+          }
+          assert(S(input) == ParseSuccess(expected, ""))
+      }
     }
   }
 }
