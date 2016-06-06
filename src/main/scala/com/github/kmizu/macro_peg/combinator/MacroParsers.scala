@@ -4,8 +4,7 @@ import scala.collection.mutable.ListBuffer
 
 object MacroParsers {
   type Input = String
-  case class ~~[+A, +B](_1: A, _2: B)
-  type ~[+A, +B] = A ~~ B
+  case class ~[+A, +B](_1: A, _2: B)
   abstract sealed class ParseResult[+T] {
     /**
       * Drop extra information from this ParseResult.
@@ -154,7 +153,7 @@ object MacroParsers {
       case ParseSuccess(result1, next1) =>
         b(next1) match {
           case ParseSuccess(result2, next2) =>
-            ParseSuccess(~~(result1, result2), next2)
+            ParseSuccess(new ~(result1, result2), next2)
           case ParseFailure(message, next2) =>
             ParseFailure(message, next2)
         }
