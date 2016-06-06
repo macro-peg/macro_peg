@@ -11,6 +11,7 @@ object MacroParsers {
       * If it was ParseSuccess, result is converted to None,
       * else, message is converted to ""
       * Mainly, this method is used for testing
+      *
       * @return if `this.isInstanceOf[ParseSuccess[T]]` `ParseSuccess(None, next)` else `ParseFailure("", next)`
       */
     def drop: ParseResult[Any] = this match {
@@ -42,6 +43,13 @@ object MacroParsers {
       }
     }
     def map[U](function: T => U): MacroParser[U] = MappingParser(this, function)
+  }
+  def chainl[A](p: MacroParser[A])(q: MacroParser[(A, A) => A]): MacroParser[A] = {
+    (p ~ (q ~ p).*).map { case x ~ xs =>
+      xs.foldLeft(x) { case (a, f ~ b) =>
+          f(a, b)
+      }
+    }
   }
   type P[+T] = MacroParser[T]
   def any: AnyParser.type = AnyParser
