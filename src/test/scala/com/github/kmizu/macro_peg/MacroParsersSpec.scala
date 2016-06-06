@@ -124,18 +124,18 @@ class MacroParsersSpec extends FunSpec with DiagrammedAssertions with GeneratorD
       object L {
         lazy val S: P[Int] = refer(E)
         lazy val E: P[Int] = refer(A)
-        lazy val A: P[Int] = (refer(M) ~ ("+".s ~ refer(M) | "-".s ~ refer(M)).*).map{case x ~~ xs=>
+        lazy val A: P[Int] = (refer(M) ~ ("+".s ~ refer(M) | "-".s ~ refer(M)).*).map{case x ~ xs=>
           xs.foldLeft(x) {
-            case (ys, op ~~ r) => if(op == "+") ys + r else ys - r
+            case (ys, op ~ r) => if(op == "+") ys + r else ys - r
           }
         }
-        lazy val M: P[Int] = (refer(P) ~ ("*".s ~ refer(P) | "/".s ~ refer(P)).*).map{case x ~~ xs=>
+        lazy val M: P[Int] = (refer(P) ~ ("*".s ~ refer(P) | "/".s ~ refer(P)).*).map{case x ~ xs=>
             xs.foldLeft(x) {
-              case (ys, op ~~ r) => if(op == "*") ys * r else ys / r
+              case (ys, op ~ r) => if(op == "*") ys * r else ys / r
             }
         }
         lazy val P: P[Int] =
-          ("(".s ~ refer(E) ~ ")".s).map{ case _ ~~ n ~~ _ => n} /
+          ("(".s ~ refer(E) ~ ")".s).map{ case _ ~ n ~ _ => n} /
           refer(N)
         lazy val N: P[Int] = range('0'to'9').+.map{_.mkString.toInt}
       }

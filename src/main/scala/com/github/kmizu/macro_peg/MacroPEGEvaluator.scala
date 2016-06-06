@@ -75,6 +75,8 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
         else Some(input.substring(1))
       case Ast.Wildcard(pos) =>
         if (input.length >= 1) Some(input.substring(1)) else None
+      case Ast.CharClass(_, _, _) => sys.error("must be unreachable")
+      case Ast.Fun(_, _, _) => sys.error("must be unreachable")
     }
     evaluateIn(input, exp, FUNS)
   }
@@ -106,6 +108,8 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
       Ast.Str(pos, target)
     case Ast.Wildcard(pos) =>
       Ast.Wildcard(pos)
+    case ast@Ast.CharClass(_, _, _) => ast
+    case ast@Ast.CharSet(_, _, _) => ast
   }
 
   def evaluate(input: String, start: Symbol): Option[String] = {
