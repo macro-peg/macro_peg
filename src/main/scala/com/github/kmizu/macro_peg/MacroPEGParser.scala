@@ -18,10 +18,11 @@ object MacroPEGParser {
 
   /**
    * This exception is thrown in the case of a parsing failure
+ *
    * @param pos the position where the parsing failed
    * @param msg error message
    */
-  case class ParseException(pos: Pos, msg: String) extends Exception(pos.line + ", " + pos.column + ":" + msg)
+  case class ParseException(pos: Ast.Position, msg: String) extends Exception(pos.line + ", " + pos.column + ":" + msg)
   
   private object ParserCore extends Parsers {
     type Elem = Char
@@ -37,7 +38,7 @@ object MacroPEGParser {
       not(p) | failure(msg)
     }
     lazy val GRAMMAR: Parser[Grammar] = (loc <~ Spacing) ~ Definition.* <~ EndOfFile ^^ {
-      case pos ~ rules => Grammar(Pos(pos.line, pos.column), rules)
+      case pos ~ rules => Grammar(Position(pos.line, pos.column), rules)
     }
 
     lazy val Definition: Parser[Rule] = Identifier  ~ ((LPAREN ~> rep1sep(Arg, COMMA) <~ RPAREN).? <~ EQ) ~! (Expression <~ SEMI_COLON) ^^ {
@@ -52,11 +53,11 @@ object MacroPEGParser {
     }
 
     lazy val RuleTypeTree: Parser[RuleType] = {
-      (OPEN ~> (rep1sep(SimpleTypeTree, COMMA) <~ CLOSE) ~ (loc <~ ARROW) ~ SimpleTypeTree) ^^ { case paramTypes ~ pos ~ resultType => RuleType(Pos(pos.line, pos.column), paramTypes, resultType) }
+      (OPEN ~> (rep1sep(SimpleTypeTree, COMMA) <~ CLOSE) ~ (loc <~ ARROW) ~ SimpleTypeTree) ^^ { case paramTypes ~ pos ~ resultType => RuleType(Position(pos.line, pos.column), paramTypes, resultType) }
     }
 
     lazy val SimpleTypeTree: Parser[SimpleType] = {
-      loc <~ QUESTION ^^ { case pos => SimpleType(Pos(pos.line, pos.column)) }
+      loc <~ QUESTION ^^ { case pos => SimpleType(Position(pos.line, pos.column)) }
     }
     
     lazy val Expression: Parser[Exp] = rep1sep(Sequence, SLASH | BAR) ^^ {ns =>
@@ -66,42 +67,42 @@ object MacroPEGParser {
       val x :: xs = ns; xs.foldLeft(x){(a, y) => Seq(y.pos, a, y)}
     }
     lazy val Prefix: Parser[Exp] = (
-      (loc <~ AND) ~ Suffix ^^ { case pos ~ e => AndPred(Pos(pos.line, pos.column), e) }
-    | (loc <~ NOT) ~ Suffix ^^ { case pos ~ e => NotPred(Pos(pos.line, pos.column), e) }
+      (loc <~ AND) ~ Suffix ^^ { case pos ~ e => AndPred(Position(pos.line, pos.column), e) }
+    | (loc <~ NOT) ~ Suffix ^^ { case pos ~ e => NotPred(Position(pos.line, pos.column), e) }
     | Suffix
     )
     lazy val Suffix: Parser[Exp] = (
-      loc ~ Primary <~ QUESTION ^^ { case pos ~ e => Opt(Pos(pos.line, pos.column), e) }
-    | loc ~ Primary <~ STAR ^^ { case pos ~ e => Rep0(Pos(pos.line, pos.column), e) }
-    | loc ~ Primary <~ PLUS ^^ { case pos ~ e => Rep1(Pos(pos.line, pos.column), e) }
+      loc ~ Primary <~ QUESTION ^^ { case pos ~ e => Opt(Position(pos.line, pos.column), e) }
+    | loc ~ Primary <~ STAR ^^ { case pos ~ e => Rep0(Position(pos.line, pos.column), e) }
+    | loc ~ Primary <~ PLUS ^^ { case pos ~ e => Rep1(Position(pos.line, pos.column), e) }
     | Primary
     )
     lazy val Primary: Parser[Exp] = (
-      (loc <~ Debug) ~ (LPAREN ~> Expression <~ RPAREN) ^^ { case loc ~ body => Ast.Debug(Pos(loc.line, loc.column), body)}
-    | Identifier ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Pos(name.pos.line, name.pos.column), name.name, params) }
+      (loc <~ Debug) ~ (LPAREN ~> Expression <~ RPAREN) ^^ { case loc ~ body => Ast.Debug(Position(loc.line, loc.column), body)}
+    | Identifier ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Position(name.pos.line, name.pos.column), name.name, params) }
     | Identifier
     | CLASS
-    | (OPEN ~> (repsep(Identifier, COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Fun(Pos(loc.line, loc.column), ids.map(_.name), body) }
+    | (OPEN ~> (repsep(Identifier, COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Fun(Position(loc.line, loc.column), ids.map(_.name), body) }
     | OPEN ~> Expression <~ CLOSE
-    | loc <~ DOT ^^ { case pos => Wildcard(Pos(pos.line, pos.column)) }
-    | loc <~ chr('_') ^^ { case pos => Str(Pos(pos.line, pos.column), "") }
+    | loc <~ DOT ^^ { case pos => Wildcard(Position(pos.line, pos.column)) }
+    | loc <~ chr('_') ^^ { case pos => Str(Position(pos.line, pos.column), "") }
     | Literal
     )
     lazy val loc: Parser[Position] = Parser{reader => Success(reader.pos, reader)}    
     lazy val Identifier: Parser[Ident] = loc ~ IdentStart ~ IdentCont.* <~Spacing ^^ {
-      case pos ~ s ~ c => Ident(Pos(pos.line, pos.column), Symbol("" + s + c.foldLeft("")(_ + _)))
+      case pos ~ s ~ c => Ident(Position(pos.line, pos.column), Symbol("" + s + c.foldLeft("")(_ + _)))
     }
     lazy val IdentStart: Parser[Char] = crange('a','z') | crange('A','Z') | '_'
     lazy val IdentCont: Parser[Char] = IdentStart | crange('0','9')
     lazy val Literal: Parser[Str] = loc ~ (chr('\"') ~> CHAR.* <~ chr('\"')) <~ Spacing ^^ {
-      case pos ~ cs => Str(Pos(pos.line, pos.column), cs.mkString)
+      case pos ~ cs => Str(Position(pos.line, pos.column), cs.mkString)
     }
     lazy val CLASS: Parser[CharClass] = {
       (loc <~ chr('[')) ~ opt(chr('^')) ~ ((not(chr(']')) ~> Range).* <~ ']' ~> Spacing) ^^ {
         //negative character class
-        case (pos ~ Some(_) ~ rs) => CharClass(Pos(pos.line, pos.column), false, rs)
+        case (pos ~ Some(_) ~ rs) => CharClass(Position(pos.line, pos.column), false, rs)
         //positive character class
-        case (pos ~ None ~ rs) => CharClass(Pos(pos.line, pos.column), true, rs)
+        case (pos ~ None ~ rs) => CharClass(Position(pos.line, pos.column), true, rs)
       }
     }
     lazy val Range: Parser[CharClassElement] = (
@@ -157,6 +158,7 @@ object MacroPEGParser {
 
   /**
    * Parses a pattern from `content` and returns the `Grammar` instance, which is the parse result.
+ *
    * @param fileName
    * @param content
    * @return `Grammar` instance
@@ -166,15 +168,16 @@ object MacroPEGParser {
       case ParserCore.Success(node, _) => node
       case ParserCore.Failure(msg, rest) =>
         val pos = rest.pos
-        throw new ParseException(Pos(pos.line, pos.column), msg)
+        throw new ParseException(Position(pos.line, pos.column), msg)
       case ParserCore.Error(msg, rest) =>
         val pos = rest.pos
-        throw new ParseException(Pos(pos.line, pos.column), msg)
+        throw new ParseException(Position(pos.line, pos.column), msg)
     }
   }
 
   /**
    * Parses a `pattern` and returns the `Grammar` instance, which is the parse result.
+ *
    * @param pattern input string
    * @return `Grammar` instance
    */
