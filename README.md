@@ -93,7 +93,7 @@ Note that the behaviour could change.
 Add the following lines to your build.sbt file:
 
 ```scala
-libraryDependencies += "com.github.kmizu" %% "macro_peg" % "0.0.9"
+libraryDependencies += ("com.github.kmizu" %% "macro_peg" % "0.0.9")
 ```
 
 Then, you can use `MacroPEGParser` and `MacroPEGEvaluator` as the followings:
@@ -337,3 +337,23 @@ input:123
 not matched to 123
 
 ```
+
+```scala
+scala>     tryGrammar(
+     |       "string macro",
+     |       """
+     |       |S = STRING;
+     |       |STRING = STRING_MACRO("\"") / STRING_MACRO("'");
+     |       |STRING_MACRO(Q) = Q (!(Q / "\\") . / "\\" .)* Q;""".stripMargin,
+     |       "'foo'", "'foo"
+     |     )
+grammar: string macro
+
+input:'foo'
+matched to 'foo'
+
+input:'foo
+not matched to 'foo
+
+```
+      

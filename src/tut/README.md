@@ -215,3 +215,15 @@ tryGrammar(
       "hoge", "foo", "hoge1", "foo1", "1foo", "2hoge", "123"
     )
 ```
+
+```tut
+    tryGrammar(
+      "string macro",
+      """
+      |S = STRING;
+      |STRING = STRING_MACRO("\"") / STRING_MACRO("'");
+      |STRING_MACRO(Q) = Q (!(Q / "\\") . / "\\" .)* Q;""".stripMargin,
+      "'foo'", "'foo"
+    )
+```
+      
