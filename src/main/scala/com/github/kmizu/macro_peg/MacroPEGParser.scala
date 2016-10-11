@@ -79,7 +79,7 @@ object MacroPEGParser {
     )
     lazy val Primary: Parser[Exp] = (
       (loc <~ Debug) ~ (LPAREN ~> Expression <~ RPAREN) ^^ { case loc ~ body => Ast.Debug(Position(loc.line, loc.column), body)}
-    | Identifier ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Position(name.pos.line, name.pos.column), name.name, params) }
+    | IdentifierWithoutSpace ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Position(name.pos.line, name.pos.column), name.name, params) }
     | Identifier
     | CLASS
     | (OPEN ~> (repsep(Identifier, COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Fun(Position(loc.line, loc.column), ids.map(_.name), body) }
@@ -88,10 +88,11 @@ object MacroPEGParser {
     | loc <~ chr('_') ^^ { case pos => Str(Position(pos.line, pos.column), "") }
     | Literal
     )
-    lazy val loc: Parser[Position] = Parser{reader => Success(reader.pos, reader)}    
-    lazy val Identifier: Parser[Ident] = loc ~ IdentStart ~ IdentCont.* <~Spacing ^^ {
+    lazy val loc: Parser[Position] = Parser{reader => Success(reader.pos, reader)}
+    lazy val IdentifierWithoutSpace: Parser[Ident] = loc ~ IdentStart ~ IdentCont.* ^^ {
       case pos ~ s ~ c => Ident(Position(pos.line, pos.column), Symbol("" + s + c.foldLeft("")(_ + _)))
     }
+    lazy val Identifier: Parser[Ident] = IdentifierWithoutSpace <~ Spacing
     lazy val IdentStart: Parser[Char] = crange('a','z') | crange('A','Z') | '_'
     lazy val IdentCont: Parser[Char] = IdentStart | crange('0','9')
     lazy val Literal: Parser[Str] = loc ~ (chr('\"') ~> CHAR.* <~ chr('\"')) <~ Spacing ^^ {
