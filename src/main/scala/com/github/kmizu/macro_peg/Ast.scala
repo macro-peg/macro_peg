@@ -25,6 +25,13 @@ object Ast {
     * @param rules the list of rules constituting PEG grammar */
   case class Grammar(pos: Position, rules: List[Rule]) extends HasPosition {
     def +(newRule: Rule): Grammar = Grammar(pos, rules = newRule::rules)
+
+    def isWellFormed: Boolean = {
+      val ruleMapping = rules.map{r => r.name -> r}.toMap
+      val startRule = rules.head
+      val startExpression = startRule.body
+      ???
+    }
   }
   /** This class represents an AST of rule in PEG grammar.
  *
