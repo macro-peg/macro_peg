@@ -25,7 +25,7 @@ scalacOptions in (Compile, doc) ++= { Seq(
   "-doc-source-url", s"https://github.com/kmizu/macro_peg/tree/${scaladocBranch.value}€{FILE_PATH}.scala"
 )}
 
-scalacOptions <++= scalaVersion map { v =>
+scalacOptions ++= {
   Seq("-unchecked", "-deprecation", "-feature", "-language:implicitConversions")
 }
 
@@ -65,9 +65,9 @@ pomExtra := (
   </developers>
 )
 
-publishTo <<= version { v =>
+publishTo := {
   val nexus = "https://oss.sonatype.org/"
-  if (v.endsWith("-SNAPSHOT"))
+  if (version.value.endsWith("-SNAPSHOT"))
     Some("snapshots" at nexus+"content/repositories/snapshots")
   else
     Some("releases" at nexus+"service/local/staging/deploy/maven2")
