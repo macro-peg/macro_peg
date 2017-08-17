@@ -10,7 +10,7 @@ mimaPreviousArtifacts := Set("com.github.kmizu" %% "macro_peg" % "0.0.7")
 
 publishMavenStyle := true
 
-tutSettings
+enablePlugins(TutPlugin)
 
 tutSourceDirectory := file("src")/"tut"
 
