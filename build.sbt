@@ -2,9 +2,9 @@ organization := "com.github.kmizu"
 
 name := "macro_peg"
 
-scalaVersion := "2.12.3"
+scalaVersion := "2.12.2"
 
-crossScalaVersions := Seq("2.11.11", scalaVersion.value)
+crossScalaVersions := Seq("2.12.1", "2.11.11")
 
 mimaPreviousArtifacts := Set("com.github.kmizu" %% "macro_peg" % "0.0.7")
 
