@@ -6,3 +6,4 @@ target/
 .project
 .cache-main
 /bin/
+.cache-*
