@@ -38,64 +38,64 @@ object Ast {
     * @param pos position in source file
     * @param name the name of this rule.  It is referred in body
     * @param body the parsing expression which this rule represents */
-  case class Rule(pos: Position, name: Symbol, body: Exp, args: List[Symbol] = Nil) extends HasPosition
+  case class Rule(pos: Position, name: Symbol, body: Expression, args: List[Symbol] = Nil) extends HasPosition
   /** This trait represents common super-type of parsing expression AST. */
-  sealed trait Exp extends HasPosition
+  sealed trait Expression extends HasPosition
   /** This class represents an AST of sequence (e1 e2).
  *
     * @param pos position in source file
     * @param lhs e1
     * @param rhs e2 */
-  case class Seq(pos: Position, lhs: Exp, rhs: Exp) extends Exp
+  case class Sequence(pos: Position, lhs: Expression, rhs: Expression) extends Expression
   /** This class represents an AST of ordered choice (e1 / e2).
  *
     * @param pos position in source file
     * @param lhs e1
     * @param rhs e2 */
-  case class Alt(pos: Position, lhs: Exp, rhs: Exp) extends Exp
+  case class Alternation(pos: Position, lhs: Expression, rhs: Expression) extends Expression
   /** This class represents an AST of repetition e*.
  *
     * @param pos position in source file
     * @param body e */
-  case class Rep0(pos: Position, body: Exp) extends Exp
+  case class Repeat0(pos: Position, body: Expression) extends Expression
   /** This class represents an AST of one-or-more repetition e+.
  *
     * @param pos position in source file
     * @param body e */
-  case class Rep1(pos: Position, body: Exp) extends Exp
+  case class Repeat1(pos: Position, body: Expression) extends Expression
   /** This class represents an AST of zero-or-one occurrence e?.
  *
     * @param pos position in source file
     * @param body e */
-  case class Opt(pos: Position, body: Exp) extends Exp
+  case class Optional(pos: Position, body: Expression) extends Expression
   /** This class represents an AST of and-predicate &(e).
  *
     * @param pos position in source file
     * @param body e */
-  case class AndPred(pos: Position, body: Exp) extends Exp
+  case class AndPredicate(pos: Position, body: Expression) extends Expression
   /** This class represents an AST of not-predicate !(e).
  *
     * @param pos position in source file
     * @param body e */
-  case class NotPred(pos: Position, body: Exp) extends Exp
+  case class NotPredicate(pos: Position, body: Expression) extends Expression
   /** This class represents an AST of string literal "...".
  *
     * @param pos    position in source file
     * @param target literal */
-  case class Str(pos: Position, target: String) extends Exp
+  case class StringLiteral(pos: Position, target: String) extends Expression
   /** This class represents an AST of wild-card character ..
  *
     * @param pos position in source file */
-  case class Wildcard(pos: Position) extends Exp
+  case class Wildcard(pos: Position) extends Expression
   /** This class represents an AST of character set,
     *  which is created from CharSet.
     */
-  case class CharSet(pos: Position, positive: Boolean, elems: Set[Char]) extends Exp
+  case class CharSet(pos: Position, positive: Boolean, elems: Set[Char]) extends Expression
   /** This class represents an AST of character class [...].
  *
     * @param pos position in source file
     * @param elems the list of element constituting character class. */
-  case class CharClass(pos: Position, positive: Boolean, elems: List[CharClassElement]) extends Exp
+  case class CharClass(pos: Position, positive: Boolean, elems: List[CharClassElement]) extends Expression
   /** This trait represents common super-type of element in character class. */
   sealed trait CharClassElement
   /** An element of character class representing one character. */
@@ -111,24 +111,25 @@ object Ast {
  *
     * @param pos  pos position in source file
     * @param body e */
-  case class Debug(pos: Position, body: Exp) extends Exp
+  case class Debug(pos: Position, body: Expression) extends Expression
 
   /** This class represents an AST of rule calls.
  *
     * @param pos position in source file
     * @param name the name of identifier */
-  case class Call(pos: Position, name: Symbol, args: List[Exp]) extends Exp
+  case class Call(pos: Position, name: Symbol, args: List[Expression]) extends Expression
 
   /** This class represents an AST of identifier.
     * An identifier is used as reference of nonterminal.
  *
     * @param pos  position in source file
     * @param name the name of identifier */
-  case class Ident(pos: Position, name: Symbol) extends Exp
+  case class Identifier(pos: Position, name: Symbol) extends Expression
+
+  case class Function(pos: Position, args: List[Symbol], body: Expression) extends Expression
 
   sealed abstract class Type(pos: Position)
   case class SimpleType(pos: Position) extends Type(pos)
   case class RuleType(pos: Position, paramTypes: List[Type], resultType: Type) extends Type(pos)
 
-  case class Fun(pos: Position, args: List[Symbol], body: Exp) extends Exp
 }
