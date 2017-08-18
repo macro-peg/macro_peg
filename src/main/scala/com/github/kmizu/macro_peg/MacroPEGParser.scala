@@ -41,12 +41,12 @@ object MacroPEGParser {
       case pos ~ rules => Grammar(Position(pos.line, pos.column), rules)
     }
 
-    lazy val Definition: Parser[Rule] = Identifier  ~ ((LPAREN ~> rep1sep(Arg, COMMA) <~ RPAREN).? <~ EQ) ~! (Expression <~ SEMI_COLON) ^^ {
+    lazy val Definition: Parser[Rule] = Ident  ~ ((LPAREN ~> rep1sep(Arg, COMMA) <~ RPAREN).? <~ EQ) ~! (Expression <~ SEMI_COLON) ^^ {
       case name ~ argsOpt ~ body =>
         Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_._1.name))
     }
 
-    lazy val Arg: Parser[(Ident, Option[Type])] = Identifier ~ (COLON ~> TypeTree).? ^^ { case id ~ tpe => (id, tpe)}
+    lazy val Arg: Parser[(Identifier, Option[Type])] = Ident ~ (COLON ~> TypeTree).? ^^ { case id ~ tpe => (id, tpe)}
 
     lazy val TypeTree: Parser[Type] = {
       RuleTypeTree | SimpleTypeTree
@@ -60,43 +60,43 @@ object MacroPEGParser {
       loc <~ QUESTION ^^ { case pos => SimpleType(Position(pos.line, pos.column)) }
     }
     
-    lazy val Expression: Parser[Exp] = rep1sep(Sequence, SLASH | BAR) ^^ {ns =>
-      val x :: xs = ns; xs.foldLeft(x){(a, y) => Alt(y.pos, a, y)}
+    lazy val Expression: Parser[Expression] = rep1sep(Sequencable, SLASH | BAR) ^^ { ns =>
+      val x :: xs = ns; xs.foldLeft(x){(a, y) => Alternation(y.pos, a, y)}
     }
-    lazy val Sequence: Parser[Exp] = Prefix.+ ^^ {ns =>
-      val x :: xs = ns; xs.foldLeft(x){(a, y) => Seq(y.pos, a, y)}
+    lazy val Sequencable: Parser[Expression]   = Prefix.+ ^^ { ns =>
+      val x :: xs = ns; xs.foldLeft(x){(a, y) => Sequence(y.pos, a, y)}
     }
-    lazy val Prefix: Parser[Exp] = (
-      (loc <~ AND) ~ Suffix ^^ { case pos ~ e => AndPred(Position(pos.line, pos.column), e) }
-    | (loc <~ NOT) ~ Suffix ^^ { case pos ~ e => NotPred(Position(pos.line, pos.column), e) }
+    lazy val Prefix: Parser[Expression]     = (
+      (loc <~ AND) ~ Suffix ^^ { case pos ~ e => AndPredicate(Position(pos.line, pos.column), e) }
+    | (loc <~ NOT) ~ Suffix ^^ { case pos ~ e => NotPredicate(Position(pos.line, pos.column), e) }
     | Suffix
     )
-    lazy val Suffix: Parser[Exp] = (
-      loc ~ Primary <~ QUESTION ^^ { case pos ~ e => Opt(Position(pos.line, pos.column), e) }
-    | loc ~ Primary <~ STAR ^^ { case pos ~ e => Rep0(Position(pos.line, pos.column), e) }
-    | loc ~ Primary <~ PLUS ^^ { case pos ~ e => Rep1(Position(pos.line, pos.column), e) }
+    lazy val Suffix: Parser[Expression]     = (
+      loc ~ Primary <~ QUESTION ^^ { case pos ~ e => Optional(Position(pos.line, pos.column), e) }
+    | loc ~ Primary <~ STAR ^^ { case pos ~ e => Repeat0(Position(pos.line, pos.column), e) }
+    | loc ~ Primary <~ PLUS ^^ { case pos ~ e => Repeat1(Position(pos.line, pos.column), e) }
     | Primary
     )
-    lazy val Primary: Parser[Exp] = (
+    lazy val Primary: Parser[Expression]    = (
       (loc <~ Debug) ~ (LPAREN ~> Expression <~ RPAREN) ^^ { case loc ~ body => Ast.Debug(Position(loc.line, loc.column), body)}
     | IdentifierWithoutSpace ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Position(name.pos.line, name.pos.column), name.name, params) }
-    | Identifier
+    | Ident
     | CLASS
-    | (OPEN ~> (repsep(Identifier, COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Fun(Position(loc.line, loc.column), ids.map(_.name), body) }
+    | (OPEN ~> (repsep(Ident, COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Function(Position(loc.line, loc.column), ids.map(_.name), body) }
     | OPEN ~> Expression <~ CLOSE
     | loc <~ DOT ^^ { case pos => Wildcard(Position(pos.line, pos.column)) }
-    | loc <~ chr('_') ^^ { case pos => Str(Position(pos.line, pos.column), "") }
+    | loc <~ chr('_') ^^ { case pos => StringLiteral(Position(pos.line, pos.column), "") }
     | Literal
     )
     lazy val loc: Parser[Position] = Parser{reader => Success(reader.pos, reader)}
-    lazy val IdentifierWithoutSpace: Parser[Ident] = loc ~ IdentStart ~ IdentCont.* ^^ {
-      case pos ~ s ~ c => Ident(Position(pos.line, pos.column), Symbol("" + s + c.foldLeft("")(_ + _)))
+    lazy val IdentifierWithoutSpace: Parser[Identifier] = loc ~ IdentStart ~ IdentCont.* ^^ {
+      case pos ~ s ~ c => Identifier(Position(pos.line, pos.column), Symbol("" + s + c.foldLeft("")(_ + _)))
     }
-    lazy val Identifier: Parser[Ident] = IdentifierWithoutSpace <~ Spacing
+    lazy val Ident: Parser[Identifier] = IdentifierWithoutSpace <~ Spacing
     lazy val IdentStart: Parser[Char] = crange('a','z') | crange('A','Z') | '_'
     lazy val IdentCont: Parser[Char] = IdentStart | crange('0','9')
-    lazy val Literal: Parser[Str] = loc ~ (chr('\"') ~> CHAR.* <~ chr('\"')) <~ Spacing ^^ {
-      case pos ~ cs => Str(Position(pos.line, pos.column), cs.mkString)
+    lazy val Literal: Parser[StringLiteral] = loc ~ (chr('\"') ~> CHAR.* <~ chr('\"')) <~ Spacing ^^ {
+      case pos ~ cs => StringLiteral(Position(pos.line, pos.column), cs.mkString)
     }
     lazy val CLASS: Parser[CharClass] = {
       (loc <~ chr('[')) ~ opt(chr('^')) ~ ((not(chr(']')) ~> Range).* <~ ']' ~> Spacing) ^^ {
