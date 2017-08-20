@@ -79,7 +79,7 @@ object MacroPEGParser {
     )
     lazy val Primary: Parser[Expression]    = (
       (loc <~ Debug) ~ (LPAREN ~> Expression <~ RPAREN) ^^ { case loc ~ body => Ast.Debug(Position(loc.line, loc.column), body)}
-    | IdentifierWithoutSpace ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Call(Position(name.pos.line, name.pos.column), name.name, params) }
+    | IdentifierWithoutSpace ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Ast.Call(Position(name.pos.line, name.pos.column), name.name, params) }
     | Ident
     | CLASS
     | (OPEN ~> (repsep(Ident, COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Function(Position(loc.line, loc.column), ids.map(_.name), body) }
@@ -131,6 +131,8 @@ object MacroPEGParser {
     lazy val Debug = string("Debug") <~ Spacing
     lazy val LPAREN = chr('(') <~ Spacing
     lazy val RPAREN = chr(')') <~ Spacing
+    lazy val LBRACKET = chr('[') <~ Spacing
+    lazy val RBRACKET = chr(']') <~ Spacing
     lazy val COMMA = chr(',') <~ Spacing
     lazy val LT = chr('<') <~ Spacing
     lazy val GT = chr('>') <~ Spacing

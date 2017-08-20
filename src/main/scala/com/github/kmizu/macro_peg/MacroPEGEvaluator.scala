@@ -23,11 +23,33 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
     grammar.rules.map{r => r.name -> (if(r.args.isEmpty) expand(r.body) else Ast.Function(r.body.pos, r.args, expand(r.body)))}.toMap
   }
 
-  private[this] def eval(input: String, exp: Ast.Expression): Option[String] = {
-    def evaluateIn(input: String, exp: Ast.Expression, bindings: Map[Symbol, Ast.Expression]): Option[String] = exp match {
+  sealed trait Result {
+    def orElse(that: Result): Result
+    def flatMap(fun: String => Result): Result
+    def map(fun: String => String): Result
+    def get: String
+    def getOrElse(default: String): String
+  }
+  case class Success(value: String) extends Result {
+    def orElse(that: Result): Result = this
+    def flatMap(fun: String => Result): Result = fun(value)
+    def map(fun: String => String): Result = Success(fun(value))
+    def get: String = value
+    def getOrElse(default: String): String = value
+  }
+  case object Failure extends Result {
+    def orElse(that: Result): Result= that
+    def flatMap(fun: String => Result): Result = this
+    def map(fun: String => String): Result = this
+    def get: String = throw new IllegalStateException("Failure")
+    def getOrElse(default: String): String = default
+  }
+
+  private[this] def eval(input: String, exp: Ast.Expression): Result = {
+    def evaluateIn(input: String, exp: Ast.Expression, bindings: Map[Symbol, Ast.Expression]): Result = exp match {
       case Ast.Debug(pos, body) =>
         println("DEBUG: " + extract(body, bindings))
-        Some(input)
+        Success(input)
       case Ast.Alternation(pos, l, r) =>
         evaluateIn(input, l, bindings).orElse(evaluateIn(input, r, bindings))
       case Ast.Sequence(pos, l, r) =>
@@ -37,8 +59,8 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
         evaluateIn(input, body, bindings).map{_ => input}
       case Ast.NotPredicate(pos, body) =>
         evaluateIn(input, body, bindings) match {
-          case Some(in) => None
-          case None => Some(input)
+          case Success(in) => Failure
+          case Failure => Success(input)
         }
       case Ast.Call(pos, name, params) =>
         val fun = bindings(name).asInstanceOf[Ast.Function]
@@ -51,30 +73,33 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
         val body = bindings(name)
         evaluateIn(input, body, bindings)
       case Ast.Optional(pos, body) =>
-        evaluateIn(input, body, bindings).orElse(Some(input))
+        evaluateIn(input, body, bindings).orElse(Success(input))
       case Ast.Repeat0(pos, body) =>
         var in = input
-        var result: Option[String] = None
-        while({result = evaluateIn(in, body, bindings); result != None}) {
+        var result: Result = Failure
+        while({result = evaluateIn(in, body, bindings); result != Failure}) {
           in = result.get
         }
-        Some(in)
+        Success(in)
       case Ast.Repeat1(pos, body) =>
         var in = input
         var result = evaluateIn(in, body, bindings)
-        if(result.isEmpty) return None
-        in = result.get
-        while({result = evaluateIn(in, body, bindings); result != None}) {
-          in = result.get
+        result match {
+          case Failure => Failure
+          case Success(next) =>
+            var in: String = next
+            while({result = evaluateIn(in, body, bindings); result != Failure}) {
+              in = result.get
+            }
+            Success(in)
         }
-        Some(in)
       case Ast.StringLiteral(pos, target) =>
-        if (input.startsWith(target)) Some(input.substring(target.length)) else None
+        if (input.startsWith(target)) Success(input.substring(target.length)) else Failure
       case Ast.CharSet(_, positive, set) =>
-        if(input == "" || (positive != set(input(0)))) None
-        else Some(input.substring(1))
+        if(input == "" || (positive != set(input(0)))) Failure
+        else Success(input.substring(1))
       case Ast.Wildcard(pos) =>
-        if (input.length >= 1) Some(input.substring(1)) else None
+        if (input.length >= 1) Success(input.substring(1)) else Failure
       case Ast.CharClass(_, _, _) => sys.error("must be unreachable")
       case Ast.Function(_, _, _) => sys.error("must be unreachable")
     }
@@ -112,7 +137,7 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
     case ast@Ast.CharSet(_, _, _) => ast
   }
 
-  def evaluate(input: String, start: Symbol): Option[String] = {
+  def evaluate(input: String, start: Symbol): Result = {
     val body = FUNS(start)
     eval(input, body).map{str => input.substring(0, input.length - str.length)}
   }
