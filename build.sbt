@@ -2,15 +2,15 @@ organization := "com.github.kmizu"
 
 name := "macro_peg"
 
-scalaVersion := "2.12.3"
+scalaVersion := "2.12.4"
 
-crossScalaVersions := Seq("2.12.1", "2.11.11")
+crossScalaVersions := Seq(scalaVersion.value, "2.11.11")
 
 mimaPreviousArtifacts := Set("com.github.kmizu" %% "macro_peg" % "0.0.7")
 
 publishMavenStyle := true
 
-tutSettings
+enablePlugins(TutPlugin)
 
 tutSourceDirectory := file("src")/"tut"
 
