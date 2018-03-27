@@ -93,7 +93,7 @@ Note that the behaviour could change.
 Add the following lines to your build.sbt file:
 
 ```scala
-libraryDependencies += "com.github.kmizu" %% "macro_peg" % "0.0.10"
+libraryDependencies += "com.github.kmizu" %% "macro_peg" % "0.0.11"
 ```
 
 Then, you can use `MacroPEGParser` and `MacroPEGEvaluator` as the followings:
