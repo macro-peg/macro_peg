@@ -2,9 +2,9 @@
  
 [![Gitter](https://badges.gitter.im/kmizu/macro_peg.svg)](https://gitter.im/kmizu/macro_peg?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 [![Build Status](https://travis-ci.org/kmizu/macro_peg.png?branch=master)](https://travis-ci.org/kmizu/macro_peg)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.11)
-[![Scaladoc](http://javadoc-badge.appspot.com/com.github.kmizu/macro_peg_2.11.svg?label=scaladoc)](http://javadoc-badge.appspot.com/com.github.kmizu/macro_peg_2.11/index.html#com.github.kmizu.macro_peg.package)
-[![Reference Status](https://www.versioneye.com/java/com.github.kmizu:macro_peg_2.11/reference_badge.svg?style=flat)](https://www.versioneye.com/java/com.github.kmizu:macro_peg_2.11/references)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.12/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.12)
+[![Scaladoc](http://javadoc-badge.appspot.com/com.github.kmizu/macro_peg_2.12.svg?label=scaladoc)](http://javadoc-badge.appspot.com/com.github.kmizu/macro_peg_2.12/index.html#com.github.kmizu.macro_peg.package)
+[![Reference Status](https://www.versioneye.com/java/com.github.kmizu:macro_peg_2.12/reference_badge.svg?style=flat)](https://www.versioneye.com/java/com.github.kmizu:macro_peg_2.12/references)
 
 Macro PEG is an extended PEG by macro-like rules.  It seems that expressiveness of Macro PEG
 is greather than traditional PEG since Macro PEG can express palindromes.  This repository implements a Macro PEG
@@ -47,6 +47,12 @@ Note that spacing is ommited.
     CharacterClass <- "[" "^"? (!"[" .)+ "]"
     
 ### Release Note
+
+#### 0.0.11
+
+* Add Scala 2.12 support
+* Use specialied `Result` type instead of `Option` type
+  * `Result` is either `Success` or `Failure`
 
 #### 0.0.9
 
@@ -122,36 +128,36 @@ inputs: List[String] = List(a, b, aa, bb, ab, ba, aaa, bbb, aba, bab, abb, baa, 
 
 scala> inputs.map{input => s"${input} => ${evaluator.evaluate(input, 'S)}"}.mkString("\n")
 res0: String =
-a => None
-b => None
-aa => Some(aa)
-bb => Some(bb)
-ab => None
-ba => None
-aaa => None
-bbb => None
-aba => None
-bab => None
-abb => None
-baa => None
-aab => None
-bba => None
-aaaa => Some(aaaa)
-bbbb => Some(bbbb)
-aaab => None
-aaba => None
-abaa => None
-baaa => None
-bbba => None
-bbab => None
-babb => None
-abbb => None
-aabb => None
-abba => Some(abba)
-bbaa => None
-baab => Some(baab)
-abab => None
-baba => None
+a => Failure
+b => Failure
+aa => Success(aa)
+bb => Success(bb)
+ab => Failure
+ba => Failure
+aaa => Failure
+bbb => Failure
+aba => Failure
+bab => Failure
+abb => Failure
+baa => Failure
+aab => Failure
+bba => Failure
+aaaa => Success(aaaa)
+bbbb => Success(bbbb)
+aaab => Failure
+aaba => Failure
+abaa => Failure
+baaa => Failure
+bbba => Failure
+bbab => Failure
+babb => Failure
+abbb => Failure
+aabb => Failure
+abba => Success(abba)
+bbaa => Failure
+baab => Success(baab)
+abab => Failure
+baba => Failure
 ```
 
 ```scala
