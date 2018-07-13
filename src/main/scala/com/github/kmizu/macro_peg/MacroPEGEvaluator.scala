@@ -7,7 +7,7 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
   private def expand(node: Ast.Expression): Ast.Expression = node match {
     case Ast.CharClass(pos, positive, elems) =>
       Ast.CharSet(pos, positive, elems.foldLeft(Set[Char]()){
-        case (set, Ast.CharRange(f, t)) => (set /: (f to t))((set, c) => set + c)
+        case (set, Ast.CharRange(f, t)) => (f to t).foldLeft(set)((set, c) => set + c)
         case (set, Ast.OneChar(c)) => set + c
       })
     case Ast.Alternation(pos, e1, e2) => Ast.Alternation(pos, expand(e1), expand(e2))
