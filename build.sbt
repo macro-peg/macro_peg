@@ -4,7 +4,7 @@ name := "macro_peg"
 
 scalaVersion := "2.12.4"
 
-crossScalaVersions := Seq(scalaVersion.value, "2.11.11")
+crossScalaVersions := Seq(scalaVersion.value, "2.11.11", "2.13.0-M4")
 
 mimaPreviousArtifacts := Set("com.github.kmizu" %% "macro_peg" % "0.0.7")
 
@@ -31,9 +31,9 @@ scalacOptions ++= {
 
 
 libraryDependencies ++= Seq(
-  "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.5",
-  "org.scalatest" %% "scalatest" % "3.0.1" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.13.4" % "test"
+  "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.1",
+  "org.scalatest" %% "scalatest" % "3.0.6-SNAP1" % "test",
+  "org.scalacheck" %% "scalacheck" % "1.14.0" % "test"
 )
 
 
