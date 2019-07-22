@@ -6,7 +6,7 @@ scalaVersion := "2.12.8"
 
 crossScalaVersions := Seq(scalaVersion.value, "2.11.12", "2.13.0")
 
-mimaPreviousArtifacts := Set("com.github.kmizu" %% "macro_peg" % "0.0.7")
+mimaPreviousArtifacts := Set("com.github.kmizu" %% "macro_peg" % "0.0.9")
 
 publishMavenStyle := true
 
