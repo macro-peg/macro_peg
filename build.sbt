@@ -33,7 +33,7 @@ scalacOptions ++= {
 libraryDependencies ++= Seq(
   "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.2",
   "org.scalatest" %% "scalatest" % "3.0.8" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.14.0" % "test"
+  "org.scalacheck" %% "scalacheck" % "1.14.2" % "test"
 )
 
 
