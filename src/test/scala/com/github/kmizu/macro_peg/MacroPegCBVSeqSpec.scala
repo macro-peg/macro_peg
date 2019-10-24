@@ -47,7 +47,7 @@ class MacroPegCBVSeqSpec extends FunSpec with DiagrammedAssertions {
         """
           |S = "<" F([a-zA-Z_]+); F(N) = N ">" ("<" F([a-zA-Z_]+))* "</" N ">";
         """.stripMargin,
-        Seq( "<a></a>"),
+        Seq( "<a><b></b></a>"),
         EvaluationStrategy.CallByValuePar
       )
       assertResult(Seq(Success("")))(results)
