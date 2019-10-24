@@ -108,252 +108,94 @@ val grammar = parse(
   """.stripMargin
 )
 val evaluator = Evaluator(grammar)
-```
 
-```scala
-scala> val inputs = List(
-     |   "a", "b", "aa", "bb", "ab", "ba", "aaa", "bbb", "aba", "bab", "abb", "baa", "aab", "bba",
-     |   "aaaa", "bbbb", 
-     |   "aaab", "aaba", "abaa", "baaa",
-     |   "bbba", "bbab", "babb", "abbb",
-     |   "aabb", "abba", "bbaa", "baab", "abab", "baba"
-     | )
-inputs: List[String] = List(a, b, aa, bb, ab, ba, aaa, bbb, aba, bab, abb, baa, aab, bba, aaaa, bbbb, aaab, aaba, abaa, baaa, bbba, bbab, babb, abbb, aabb, abba, bbaa, baab, abab, baba)
+val inputs = List(
+  "a", "b", "aa", "bb", "ab", "ba", "aaa", "bbb", "aba", "bab", "abb", "baa", "aab", "bba",
+  "aaaa", "bbbb", 
+  "aaab", "aaba", "abaa", "baaa",
+  "bbba", "bbab", "babb", "abbb",
+   "aabb", "abba", "bbaa", "baab", "abab", "baba"
+)
+inputs.map{input => s"${input} => ${evaluator.evaluate(input, 'S)}"}.mkString("\n")
 
-scala> inputs.map{input => s"${input} => ${evaluator.evaluate(input, 'S)}"}.mkString("\n")
-res0: String =
-a => None
-b => None
-aa => Some(aa)
-bb => Some(bb)
-ab => None
-ba => None
-aaa => None
-bbb => None
-aba => None
-bab => None
-abb => None
-baa => None
-aab => None
-bba => None
-aaaa => Some(aaaa)
-bbbb => Some(bbbb)
-aaab => None
-aaba => None
-abaa => None
-baaa => None
-bbba => None
-bbab => None
-babb => None
-abbb => None
-aabb => None
-abba => Some(abba)
-bbaa => None
-baab => Some(baab)
-abab => None
-baba => None
-```
+evalGrammar(
+       """
+     |S = Modifiers(!"", "") !.;
+     |Modifiers(AlreadyLooked, Scope) = (!AlreadyLooked) (
+     |    &(Scope) Token("public") Modifiers(AlreadyLooked / "public", "public")
+     |  / &(Scope) Token("protected") Modifiers(AlreadyLooked / "protected", "protected")
+     |  / &(Scope) Token("private") Modifiers(AlreadyLooked / "private", "private")
+     |  / Token("static") Modifiers(AlreadyLooked / "static", Scope)
+     |  / Token("final") Modifiers(AlreadyLooked / "final", Scope)
+     |  / ""
+     |);
+     |Token(t) = t Spacing;
+     |Spacing = " "*;
+     """.stripMargin, 
+    Seq("public static final", "public public", "public static public", "final static public", "final final", "public private", "protected public", "public static")
+)
 
-```scala
-scala> tryGrammar(
-     |       "modifiers",
-     |       """
-     |     |S = Modifiers(!"", "") !.;
-     |     |Modifiers(AlreadyLooked, Scope) = (!AlreadyLooked) (
-     |     |    &(Scope) Token("public") Modifiers(AlreadyLooked / "public", "public")
-     |     |  / &(Scope) Token("protected") Modifiers(AlreadyLooked / "protected", "protected")
-     |     |  / &(Scope) Token("private") Modifiers(AlreadyLooked / "private", "private")
-     |     |  / Token("static") Modifiers(AlreadyLooked / "static", Scope)
-     |     |  / Token("final") Modifiers(AlreadyLooked / "final", Scope)
-     |     |  / ""
-     |     |);
-     |     |Token(t) = t Spacing;
-     |     |Spacing = " "*;
-     |     """.stripMargin, "public static final", "public public", "public static public", "final static public", "final final", "public private", "protected public", "public static")
-grammar: modifiers
+evalGrammar(
+         """
+     |S = ReadRight("") !.;
+     |// the number of occurence of '1 represents a natural number.
+     |// a-b=c
+     |// Essentially, this checks a=b+c.
+     |ReadRight(Right)
+     |  = &("1"* "-" Right "1") ReadRight(Right "1")
+     |  / &("1"* "-" Right "=") ReadDiff(Right, "");
+     |
+     |ReadDiff(Right, Diff)
+     |  = &("1"* "-" Right "=" Diff "1") ReadDiff(Right, Diff "1")
+     |  / &("1"* "-" Right "=" Diff !.) Check(Right, Diff);
+     |
+     |Check(Right, Diff)
+     |  = Right Diff "-" Right "=" Diff;
+     """.stripMargin,
+     Seq("11-1=1", "1-1=", "111-11=1", // should match
+         "111-1=1",  "111-1=111", "1-11=") // should not match
+   )
 
-input:public static final
-matched to public static final
-
-input:public public
-not matched to public public
-
-input:public static public
-not matched to public static public
-
-input:final static public
-matched to final static public
-
-input:final final
-not matched to final final
-
-input:public private
-not matched to public private
-
-input:protected public
-not matched to protected public
-
-input:public static
-matched to public static
-
-```
-
-```scala
-scala> tryGrammar(
-     |       "subtract",
-     |         """
-     |       |S = ReadRight("") !.;
-     |       |// the number of occurence of '1 represents a natural number.
-     |       |// a-b=c
-     |       |// Essentially, this checks a=b+c.
-     |       |ReadRight(Right)
-     |       |  = &("1"* "-" Right "1") ReadRight(Right "1")
-     |       |  / &("1"* "-" Right "=") ReadDiff(Right, "");
-     |       |
-     |       |ReadDiff(Right, Diff)
-     |       |  = &("1"* "-" Right "=" Diff "1") ReadDiff(Right, Diff "1")
-     |       |  / &("1"* "-" Right "=" Diff !.) Check(Right, Diff);
-     |       |
-     |       |Check(Right, Diff)
-     |       |  = Right Diff "-" Right "=" Diff;
-     |       """.stripMargin,
-     |       "11-1=1", "1-1=", "111-11=1", // should match
-     |       "111-1=1",  "111-1=111", "1-11=" // should not match
-     |     )
-grammar: subtract
-
-input:11-1=1
-matched to 11-1=1
-
-input:1-1=
-matched to 1-1=
-
-input:111-11=1
-matched to 111-11=1
-
-input:111-1=1
-not matched to 111-1=1
-
-input:111-1=111
-not matched to 111-1=111
-
-input:1-11=
-not matched to 1-11=
-
-```
-
-```scala
-scala>     tryGrammar(
-     |       "exponent",
-     |         """
-     |       |S = ReadLeft("", "") !.;
-     |       |// the number of occurence of '1 represents a natural number.
-     |       |// |Seq| is the length of a sequence Seq.
-     |       |// ^ is exponent operator
-     |       |// ReadLeft("", "") checks input is a correct expression a^b=c.
-     |       |
-     |       |// Read a.
-     |       |// LeftAsOnes is a sequence of "1" where |LeftAsOnes| = |a|.
-     |       |// LeftAsDots is a sequence of . where |LeftAsDots| = |a|.
-     |       |ReadLeft(LeftAsOnes, LeftAsDots)
-     |       |  = &(LeftAsOnes "1") ReadLeft(LeftAsOnes "1", LeftAsDots .)
-     |       |  / &(LeftAsOnes "^") ComputePadding(LeftAsOnes, LeftAsDots, "");
-     |       |
-     |       |// Compute Padding which is a sequene of .
-     |       |// where |Padding| + |LeftAsDots| = |Input|
-     |       |ComputePadding(LeftAsOnes, LeftAsDots, Padding)
-     |       |  = &(Padding LeftAsDots .) ComputePadding(LeftAsOnes, LeftAsDots, Padding .)
-     |       |  / &(Padding LeftAsDots !.) ReadRight(LeftAsOnes, Padding, "", "1");
-     |       |
-     |       |// Read b.
-     |       |// Exp = a^Right.
-     |       |ReadRight(Left, Padding, Right, Exp)
-     |       |  = &(Left "^" Right "1") Multiply(Left, Padding, Right "1", Exp, "", "")
-     |       |  / &(Left "^" Right "=") Check(Left, Right, Exp);
-     |       |
-     |       |// Compute Left * OldExp.
-     |       |// This adds OldExp Left times into Exp.
-     |       |// I is a loop counter.
-     |       |Multiply(Left, Padding, Right, OldExp, Exp, I)
-     |       |  = &(Padding I .) Multiply(Left, Padding, Right, OldExp, Exp OldExp, I .)
-     |       |  / &(Padding I !.) ReadRight(Left, Padding, Right, Exp);
-     |       |
-     |       |// Check whole input.
-     |       |Check(Left, Right, Exp)
-     |       |  = Left "^" Right "=" Exp;
-     |       """.stripMargin,
-     |       "11^111=11111111", "11^=1", "1^11=1", "^11=", // should match
-     |       "11^111=1111111",  "11^111=111111111" // should not match
-     |     )
-grammar: exponent
-
-input:11^111=11111111
-matched to 11^111=11111111
-
-input:11^=1
-matched to 11^=1
-
-input:1^11=1
-matched to 1^11=1
-
-input:^11=
-matched to ^11=
-
-input:11^111=1111111
-not matched to 11^111=1111111
-
-input:11^111=111111111
-not matched to 11^111=111111111
-
-```
-
-```scala
-scala>     tryGrammar(
-     |       "identifier",
-     |       """S = [a-zA-Z_][a-zA-Z0-9_]*;""",
-     |       "hoge", "foo", "hoge1", "foo1", "1foo", "2hoge", "123"
-     |     )
-grammar: identifier
-
-input:hoge
-matched to hoge
-
-input:foo
-matched to foo
-
-input:hoge1
-matched to hoge1
-
-input:foo1
-matched to foo1
-
-input:1foo
-not matched to 1foo
-
-input:2hoge
-not matched to 2hoge
-
-input:123
-not matched to 123
-
-```
-
-```scala
-scala>     tryGrammar(
-     |       "string macro",
-     |       """
-     |       |S = STRING;
-     |       |STRING = STRING_MACRO("\"") / STRING_MACRO("'");
-     |       |STRING_MACRO(Q) = Q (!(Q / "\\") . / "\\" .)* Q;""".stripMargin,
-     |       "'foo'", "'foo"
-     |     )
-grammar: string macro
-
-input:'foo'
-matched to 'foo'
-
-input:'foo
-not matched to 'foo
-
+evalGrammar(
+         """
+       |S = ReadLeft("", "") !.;
+       |// the number of occurence of '1 represents a natural number.
+       |// |Seq| is the length of a sequence Seq.
+       |// ^ is exponent operator
+       |// ReadLeft("", "") checks input is a correct expression a^b=c.
+       |
+       |// Read a.
+       |// LeftAsOnes is a sequence of "1" where |LeftAsOnes| = |a|.
+       |// LeftAsDots is a sequence of . where |LeftAsDots| = |a|.
+       |ReadLeft(LeftAsOnes, LeftAsDots)
+       |  = &(LeftAsOnes "1") ReadLeft(LeftAsOnes "1", LeftAsDots .)
+       |  / &(LeftAsOnes "^") ComputePadding(LeftAsOnes, LeftAsDots, "");
+       |
+       |// Compute Padding which is a sequene of .
+       |// where |Padding| + |LeftAsDots| = |Input|
+       |ComputePadding(LeftAsOnes, LeftAsDots, Padding)
+       |  = &(Padding LeftAsDots .) ComputePadding(LeftAsOnes, LeftAsDots, Padding .)
+       |  / &(Padding LeftAsDots !.) ReadRight(LeftAsOnes, Padding, "", "1");
+       |
+       |// Read b.
+       |// Exp = a^Right.
+       |ReadRight(Left, Padding, Right, Exp)
+       |  = &(Left "^" Right "1") Multiply(Left, Padding, Right "1", Exp, "", "")
+       |  / &(Left "^" Right "=") Check(Left, Right, Exp);
+       |
+       |// Compute Left * OldExp.
+       |// This adds OldExp Left times into Exp.
+       |// I is a loop counter.
+       |Multiply(Left, Padding, Right, OldExp, Exp, I)
+       |  = &(Padding I .) Multiply(Left, Padding, Right, OldExp, Exp OldExp, I .)
+       |  / &(Padding I !.) ReadRight(Left, Padding, Right, Exp);
+       |
+       |// Check whole input.
+       |Check(Left, Right, Exp)
+       |  = Left "^" Right "=" Exp;
+       """.stripMargin,
+       Seq("11^111=11111111", "11^=1", "1^11=1", "^11=", 
+           "11^111=1111111",  "11^111=111111111")
+)
 ```
       
