@@ -4,11 +4,10 @@ package kmizu
 package macro_peg
 
 import com.github.kmizu.macro_peg.Ast.Position
+import com.github.kmizu.macro_peg.EvaluationResult.{Success, Failure}
 
-import scala.util.control.Breaks._
-
-case class MacroPEGEvaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = EvaluationStrategy.CallByName) {
-  import MacroPEGEvaluator._
+case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = EvaluationStrategy.CallByName) {
+  import Evaluator._
   private def expand(node: Ast.Expression): Ast.Expression = node match {
     case Ast.CharClass(pos, positive, elems) =>
       Ast.CharSet(pos, positive, elems.foldLeft(Set[Char]()){
@@ -29,8 +28,8 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy 
     grammar.rules.map{r => r.name -> (if(r.args.isEmpty) expand(r.body) else Ast.Function(r.body.pos, r.args, expand(r.body)))}.toMap
   }
 
-  private[this] def eval(input: String, exp: Ast.Expression): Result = {
-    def evaluateIn(input: String, exp: Ast.Expression, bindings: Map[Symbol, Ast.Expression]): Result = exp match {
+  private[this] def eval(input: String, exp: Ast.Expression): EvaluationResult = {
+    def evaluateIn(input: String, exp: Ast.Expression, bindings: Map[Symbol, Ast.Expression]): EvaluationResult = exp match {
       case Ast.Debug(pos, body) =>
         println("DEBUG: " + extract(body, bindings))
         Success(input)
@@ -92,7 +91,7 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy 
         evaluateIn(input, body, bindings).orElse(Success(input))
       case Ast.Repeat0(pos, body) =>
         var in = input
-        var result: Result = Failure
+        var result: EvaluationResult = Failure
         while({result = evaluateIn(in, body, bindings); result != Failure}) {
           in = result.get
         }
@@ -153,31 +152,8 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy 
     case ast@Ast.CharSet(_, _, _) => ast
   }
 
-  def evaluate(input: String, start: Symbol): Result = {
+  def evaluate(input: String, start: Symbol): EvaluationResult = {
     val body = FUNS(start)
     eval(input, body)
-  }
-}
-object MacroPEGEvaluator {
-  sealed trait Result {
-    def orElse(that: Result): Result
-    def flatMap(fun: String => Result): Result
-    def map(fun: String => String): Result
-    def get: String
-    def getOrElse(default: String): String
-  }
-  case class Success(value: String) extends Result {
-    def orElse(that: Result): Result = this
-    def flatMap(fun: String => Result): Result = fun(value)
-    def map(fun: String => String): Result = Success(fun(value))
-    def get: String = value
-    def getOrElse(default: String): String = value
-  }
-  case object Failure extends Result {
-    def orElse(that: Result): Result= that
-    def flatMap(fun: String => Result): Result = this
-    def map(fun: String => String): Result = this
-    def get: String = throw new IllegalStateException("Failure")
-    def getOrElse(default: String): String = default
   }
 }
