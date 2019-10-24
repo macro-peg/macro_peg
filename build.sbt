@@ -2,11 +2,9 @@ organization := "com.github.kmizu"
 
 name := "macro_peg"
 
-scalaVersion := "2.12.8"
+scalaVersion := "2.12.10"
 
 crossScalaVersions := Seq(scalaVersion.value, "2.11.12", "2.13.0")
-
-mimaPreviousArtifacts := Set("com.github.kmizu" %% "macro_peg" % "0.0.9")
 
 publishMavenStyle := true
 

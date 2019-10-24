@@ -3,23 +3,30 @@ package github
 package kmizu
 package macro_peg
 
+import MacroPEGEvaluator._
+
 object MacroPEGRunner {
   def main(args: Array[String]): Unit = {
     tryGrammar(
       "a+b+...=z",
       """S = A !.; A = "1" A "1" / "+" A / "=";""",
+      EvaluationStrategy.CallByName,
       "1+1=11","11+1=111","11+1=1", "11+11+11=111111"
     )
     tryGrammar(
       "palindrome",
-      """S = P("") !.; P(r) = "a" P("a" r) / "b" P("b" r) / r;""", "a", "b", "aa", "bb", "ab", "abba", "abbb"
+      """S = P("") !.; P(r) = "a" P("a" r) / "b" P("b" r) / r;""",
+      EvaluationStrategy.CallByName,
+      "a", "b", "aa", "bb", "ab", "abba", "abbb"
     )
 
     tryGrammar(
       "a / b",
       """
      |S = APPLY2(ALTER, "a", "b") !.; ALTER(x, y) = Debug(x / y) (x / y); APPLY2(F, x, y) = F(x, y) ;
-     """.stripMargin, "a", "b", "c"
+     """.stripMargin,
+      EvaluationStrategy.CallByName,
+      "a", "b", "c"
     )
     tryGrammar(
        "arithmetic",
@@ -49,6 +56,7 @@ object MacroPEGRunner {
       |  = Left "*" Right "=" Prod;
       |
       """.stripMargin,
+      EvaluationStrategy.CallByName,
       "1+1=11", "111+11=11111", "111+1=11111",  "111*11=111111", "11*111=111111", "1*111=1")
     tryGrammar(
       "modifiers",
@@ -64,7 +72,9 @@ object MacroPEGRunner {
     |);
     |Token(t) = t Spacing;
     |Spacing = " "*;
-    """.stripMargin, "public static final", "public public", "public static public", "final static public", "final final", "public private", "protected public", "public static")
+    """.stripMargin,
+      EvaluationStrategy.CallByName,
+      "public static final", "public public", "public static public", "final static public", "final final", "public private", "protected public", "public static")
     tryGrammar(
       "subtract",
         """
@@ -83,6 +93,7 @@ object MacroPEGRunner {
       |Check(Right, Diff)
       |  = Right Diff "-" Right "=" Diff;
       """.stripMargin,
+      EvaluationStrategy.CallByName,
       "11-1=1", "1-1=", "111-11=1", // should match
       "111-1=1",  "111-1=111", "1-11=" // should not match
     )
@@ -126,12 +137,14 @@ object MacroPEGRunner {
       |Check(Left, Right, Exp)
       |  = Left "^" Right "=" Exp;
       """.stripMargin,
+      EvaluationStrategy.CallByName,
       "11^111=11111111", "11^=1", "1^11=1", "^11=", // should match
       "11^111=1111111",  "11^111=111111111" // should not match
     )
     tryGrammar(
       "identifier",
       """S = [a-zA-Z_][a-zA-Z0-9_]*;""",
+      EvaluationStrategy.CallByName,
       "hoge", "foo", "hoge1", "foo1", "1foo", "2hoge", "123"
     )
   }
@@ -143,15 +156,13 @@ object MacroPEGRunner {
     * @param grammarSource a String that represents Macro PEG
     * @param inputs input Strings
     */
-  def tryGrammar(name: String, grammarSource: String, inputs: String*): Unit = {
+  def tryGrammar(name: String, grammarSource: String, strategy: EvaluationStrategy, inputs: String*): Seq[Result] = {
     val grammar = MacroPEGParser.parse(grammarSource)
-    val evaluator = MacroPEGEvaluator(grammar)
-    println("grammar: " + name)
+    val evaluator = MacroPEGEvaluator(grammar, strategy)
     println()
-    for(input <- inputs) {
-      println("input:" + input)
-      println(evaluator.evaluate(input, 'S).map{in => s"matched to ${input}"}.getOrElse{s"not matched to ${input}"})
-      println()
-    }
+    for(input <- inputs)
+      yield {
+        evaluator.evaluate(input, 'S)
+      }
   }
 }
