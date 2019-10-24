@@ -1,7 +1,4 @@
-package com
-package github
-package kmizu
-package macro_peg
+package com.github.kmizu.macro_peg
 
 import scala.util.parsing.combinator._
 import scala.util.parsing.input.{CharSequenceReader, StreamReader}
@@ -14,7 +11,7 @@ import Ast._
   * @author Kota Mizushima
   *
   */
-object MacroPEGParser {
+object Parser {
 
   /**
    * This exception is thrown in the case of a parsing failure
