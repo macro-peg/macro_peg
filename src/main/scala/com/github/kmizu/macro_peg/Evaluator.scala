@@ -7,7 +7,6 @@ import com.github.kmizu.macro_peg.Ast.Position
 import com.github.kmizu.macro_peg.EvaluationResult.{Success, Failure}
 
 case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = EvaluationStrategy.CallByName) {
-  import Evaluator._
   private def expand(node: Ast.Expression): Ast.Expression = node match {
     case Ast.CharClass(pos, positive, elems) =>
       Ast.CharSet(pos, positive, elems.foldLeft(Set[Char]()){
@@ -73,7 +72,15 @@ case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = Evalua
                 Right(input -> args.zip(values).toMap)
             }
           case EvaluationStrategy.CallByValuePar =>
-            ???
+            val results = params.map{p => evaluateIn(input, p, bindings)}
+            if(results.forall{_.isSuccess}) {
+              val values = results.map(_.asInstanceOf[Success].get).map{rest =>
+                Ast.StringLiteral(Position(-1, -1), input.substring(0, input.length - rest.length))
+              }
+              Right(input -> args.zip(values).toMap)
+            } else {
+              Left(Failure)
+            }
         }
         result match {
           case Left(_) =>

@@ -6,6 +6,7 @@ sealed trait EvaluationResult {
   def map(fun: String => String): EvaluationResult
   def get: String
   def getOrElse(default: String): String
+  def isSuccess: Boolean
 }
 object EvaluationResult {
   case class Success(remained: String) extends EvaluationResult {
@@ -14,6 +15,7 @@ object EvaluationResult {
     def map(fun: String => String): EvaluationResult = Success(fun(remained))
     def get: String = remained
     def getOrElse(default: String): String = remained
+    override def isSuccess: Boolean = true
   }
   case object Failure extends EvaluationResult {
     def orElse(that: EvaluationResult): EvaluationResult= that
@@ -21,5 +23,6 @@ object EvaluationResult {
     def map(fun: String => String): EvaluationResult = this
     def get: String = throw new IllegalStateException("Failure")
     def getOrElse(default: String): String = default
+    override def isSuccess: Boolean = false
   }
 }
