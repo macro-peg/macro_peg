@@ -20,7 +20,7 @@ object Parser {
    */
   case class ParseException(pos: Ast.Position, msg: String) extends Exception(pos.line + ", " + pos.column + ":" + msg)
   
-  private object ParserCore extends SCombinator[Grammar] {
+  private object ParserCore extends SCombinator {
     implicit class RichParse[A](self: Parser[A]) {
       def <~[B](rhs: Parser[B]): Parser[A] = self << rhs
       def ~>[B](rhs: Parser[B]): Parser[B] = self >> rhs
@@ -163,7 +163,7 @@ object Parser {
    */
   def parse(fileName: String, content: java.io.Reader): Grammar = {
     val input = Iterator.continually(content.read()).takeWhile(_ != -1).map(_.toChar).mkString
-    ParserCore.parse(input) match {
+    ParserCore.parse(ParserCore.GRAMMAR, input) match {
       case Result.Success(node) => node
       case Result.Failure(location, message) =>
         throw ParseException(Position(location.line, location.column), message)
