@@ -8,12 +8,6 @@ crossScalaVersions := Seq(scalaVersion.value, "2.11.12", "2.13.0")
 
 publishMavenStyle := true
 
-enablePlugins(TutPlugin)
-
-tutSourceDirectory := file("src")/"tut"
-
-tutTargetDirectory := file(".")
-
 val scaladocBranch = settingKey[String]("branch name for scaladoc -doc-source-url")
 
 scaladocBranch := "master"
@@ -26,7 +20,6 @@ scalacOptions in (Compile, doc) ++= { Seq(
 scalacOptions ++= {
   Seq("-unchecked", "-deprecation", "-feature", "-language:implicitConversions")
 }
-
 
 libraryDependencies ++= Seq(
   "com.github.kmizu" %% "scomb" % "0.8.1",
