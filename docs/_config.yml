@@ -27,7 +27,7 @@ twitter_username: kmizu
 github_username:  kmizu
 
 # Build settings
-theme: minima
+theme: jekyll-theme-merlot
 plugins:
   - jekyll-feed
 
