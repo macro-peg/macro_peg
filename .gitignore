@@ -6,3 +6,5 @@ target/
 .project
 .cache-main
 /bin/
+_site/
+.jekyll-cache/
