@@ -2,11 +2,9 @@ organization := "com.github.kmizu"
 
 name := "macro_peg"
 
-scalaVersion := "2.12.8"
+scalaVersion := "2.12.10"
 
 crossScalaVersions := Seq(scalaVersion.value, "2.11.12", "2.13.0")
-
-mimaPreviousArtifacts := Set("com.github.kmizu" %% "macro_peg" % "0.0.9")
 
 publishMavenStyle := true
 
@@ -31,9 +29,9 @@ scalacOptions ++= {
 
 
 libraryDependencies ++= Seq(
-  "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.2",
+  "com.github.kmizu" %% "scomb" % "0.8.1",
   "org.scalatest" %% "scalatest" % "3.0.8" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.14.0" % "test"
+  "org.scalacheck" %% "scalacheck" % "1.14.2" % "test"
 )
 
 

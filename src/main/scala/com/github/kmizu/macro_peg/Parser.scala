@@ -1,12 +1,8 @@
-package com
-package github
-package kmizu
-package macro_peg
+package com.github.kmizu.macro_peg
 
-import scala.util.parsing.combinator._
-import scala.util.parsing.input.{CharSequenceReader, StreamReader}
-import scala.util.parsing.input.Position
+import com.github.kmizu.scomb._
 import java.io._
+
 import Ast._
 /**
   * This object provides a parser that parses strings in Macro PEG and translates
@@ -14,7 +10,7 @@ import Ast._
   * @author Kota Mizushima
   *
   */
-object MacroPEGParser {
+object Parser {
 
   /**
    * This exception is thrown in the case of a parsing failure
@@ -24,90 +20,89 @@ object MacroPEGParser {
    */
   case class ParseException(pos: Ast.Position, msg: String) extends Exception(pos.line + ", " + pos.column + ":" + msg)
   
-  private object ParserCore extends Parsers {
-    type Elem = Char
-    private val any: Parser[Char] = elem(".", c => c != CharSequenceReader.EofCh)
-    private def chr(c: Char): Parser[Char] = c
-    private def string(s: String): Parser[String] = s.foldLeft(success("")){(p, e) => p ~ e ^^ {case x ~ y => x + y }}
-    private def crange(f: Char, t: Char): Parser[Char] = elem("[]", c => f <= c && c <= t)
-    private def cset(cs: Char*): Parser[Char] = elem("[]", c => cs.indexWhere(_ == c) >= 0)
+  private object ParserCore extends SCombinator[Grammar] {
+    implicit class RichParse[A](self: Parser[A]) {
+      def <~[B](rhs: Parser[B]): Parser[A] = self << rhs
+      def ~>[B](rhs: Parser[B]): Parser[B] = self >> rhs
+    }
+    private def chr(c: Char): Parser[Char] = any.filter(_ == c,s"expected ${c}")
+    private def crange(f: Char, t: Char): Parser[Char] = set(f to t).map{_.charAt(0)}
+    private def cset(cs: Char*): Parser[Char] = set(cs).map{_.charAt(0)}
     private val escape: Map[Char, Char] = Map(
       'n' -> '\n', 'r' -> '\r', 't' -> '\t', 'f' -> '\f'
     )
-    private def not[T](p: => Parser[T], msg: String): Parser[Unit] = {
-      not(p) | failure(msg)
-    }
-    lazy val GRAMMAR: Parser[Grammar] = (loc <~ Spacing) ~ Definition.* <~ EndOfFile ^^ {
+    def root: Parser[Grammar] = GRAMMAR
+    lazy val GRAMMAR: Parser[Grammar] = rule((loc <~ Spacing) ~ Definition.* <~ EndOfFile) ^^ {
       case pos ~ rules => Grammar(Position(pos.line, pos.column), rules)
     }
 
-    lazy val Definition: Parser[Rule] = Ident  ~ ((LPAREN ~> rep1sep(Arg, COMMA) <~ RPAREN).? <~ EQ) ~! (Expression <~ SEMI_COLON) ^^ {
+    lazy val Definition: Parser[Rule] = rule(Ident  ~ ((LPAREN ~> Arg.repeat1By(COMMA) <~ RPAREN).? <~ EQ) ~ (Expression <~ SEMI_COLON).commit) ^^ {
       case name ~ argsOpt ~ body =>
         Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_._1.name))
     }
 
-    lazy val Arg: Parser[(Identifier, Option[Type])] = Ident ~ (COLON ~> TypeTree).? ^^ { case id ~ tpe => (id, tpe)}
+    lazy val Arg: Parser[(Identifier, Option[Type])] = rule(Ident ~ (COLON ~> TypeTree).?) ^^ { case id ~ tpe => (id, tpe)}
 
-    lazy val TypeTree: Parser[Type] = {
+    lazy val TypeTree: Parser[Type] = rule {
       RuleTypeTree | SimpleTypeTree
     }
 
-    lazy val RuleTypeTree: Parser[RuleType] = {
-      (OPEN ~> (rep1sep(SimpleTypeTree, COMMA) <~ CLOSE) ~ (loc <~ ARROW) ~ SimpleTypeTree) ^^ { case paramTypes ~ pos ~ resultType => RuleType(Position(pos.line, pos.column), paramTypes, resultType) }
+    lazy val RuleTypeTree: Parser[RuleType] = rule {
+      (OPEN ~> (SimpleTypeTree.repeat1By(COMMA) <~ CLOSE) ~ (loc <~ ARROW) ~ SimpleTypeTree) ^^ { case paramTypes ~ pos ~ resultType => RuleType(Position(pos.line, pos.column), paramTypes, resultType) }
     }
 
-    lazy val SimpleTypeTree: Parser[SimpleType] = {
+    lazy val SimpleTypeTree: Parser[SimpleType] = rule {
       loc <~ QUESTION ^^ { case pos => SimpleType(Position(pos.line, pos.column)) }
     }
     
-    lazy val Expression: Parser[Expression] = rep1sep(Sequencable, SLASH | BAR) ^^ { ns =>
+    lazy val Expression: Parser[Expression] = rule(Sequencable.repeat1By(SLASH | BAR) ^^ { ns =>
       val x :: xs = ns; xs.foldLeft(x){(a, y) => Alternation(y.pos, a, y)}
-    }
-    lazy val Sequencable: Parser[Expression]   = Prefix.+ ^^ { ns =>
+    })
+    lazy val Sequencable: Parser[Expression] = rule(Prefix.+ ^^ { ns =>
       val x :: xs = ns; xs.foldLeft(x){(a, y) => Sequence(y.pos, a, y)}
-    }
-    lazy val Prefix: Parser[Expression]     = (
+    })
+    lazy val Prefix: Parser[Expression]     = rule(
       (loc <~ AND) ~ Suffix ^^ { case pos ~ e => AndPredicate(Position(pos.line, pos.column), e) }
     | (loc <~ NOT) ~ Suffix ^^ { case pos ~ e => NotPredicate(Position(pos.line, pos.column), e) }
     | Suffix
     )
-    lazy val Suffix: Parser[Expression]     = (
+    lazy val Suffix: Parser[Expression]     = rule(
       loc ~ Primary <~ QUESTION ^^ { case pos ~ e => Optional(Position(pos.line, pos.column), e) }
     | loc ~ Primary <~ STAR ^^ { case pos ~ e => Repeat0(Position(pos.line, pos.column), e) }
     | loc ~ Primary <~ PLUS ^^ { case pos ~ e => Repeat1(Position(pos.line, pos.column), e) }
     | Primary
     )
-    lazy val Primary: Parser[Expression]    = (
+    lazy val Primary: Parser[Expression]    = rule(
       (loc <~ Debug) ~ (LPAREN ~> Expression <~ RPAREN) ^^ { case loc ~ body => Ast.Debug(Position(loc.line, loc.column), body)}
-    | IdentifierWithoutSpace ~ (LPAREN ~> repsep(Expression, COMMA) <~ RPAREN) ^^ { case name ~ params => Ast.Call(Position(name.pos.line, name.pos.column), name.name, params) }
+    | IdentifierWithoutSpace ~ (LPAREN ~> Expression.repeat0By(COMMA) <~ RPAREN) ^^ { case name ~ params => Ast.Call(Position(name.pos.line, name.pos.column), name.name, params) }
     | Ident
     | CLASS
-    | (OPEN ~> (repsep(Ident, COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Function(Position(loc.line, loc.column), ids.map(_.name), body) }
+    | (OPEN ~> (Ident.repeat0By(COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Function(Position(loc.line, loc.column), ids.map(_.name), body) }
     | OPEN ~> Expression <~ CLOSE
     | loc <~ DOT ^^ { case pos => Wildcard(Position(pos.line, pos.column)) }
     | loc <~ chr('_') ^^ { case pos => StringLiteral(Position(pos.line, pos.column), "") }
     | Literal
     )
-    lazy val loc: Parser[Position] = Parser{reader => Success(reader.pos, reader)}
-    lazy val IdentifierWithoutSpace: Parser[Identifier] = loc ~ IdentStart ~ IdentCont.* ^^ {
+    lazy val loc: Parser[Location] = %
+    lazy val IdentifierWithoutSpace: Parser[Identifier] = rule(loc ~ IdentStart ~ IdentCont.* ^^ {
       case pos ~ s ~ c => Identifier(Position(pos.line, pos.column), Symbol("" + s + c.foldLeft("")(_ + _)))
-    }
-    lazy val Ident: Parser[Identifier] = IdentifierWithoutSpace <~ Spacing
-    lazy val IdentStart: Parser[Char] = crange('a','z') | crange('A','Z') | '_'
-    lazy val IdentCont: Parser[Char] = IdentStart | crange('0','9')
-    lazy val Literal: Parser[StringLiteral] = loc ~ (chr('\"') ~> CHAR.* <~ chr('\"')) <~ Spacing ^^ {
+    })
+    lazy val Ident: Parser[Identifier] = rule(IdentifierWithoutSpace <~ Spacing)
+    lazy val IdentStart: Parser[Char] = rule(crange('a','z') | crange('A','Z') | chr('_'))
+    lazy val IdentCont: Parser[Char] = rule(IdentStart | crange('0','9'))
+    lazy val Literal: Parser[StringLiteral] = rule(loc ~ (chr('\"') ~> CHAR.* <~ chr('\"')) <~ Spacing) ^^ {
       case pos ~ cs => StringLiteral(Position(pos.line, pos.column), cs.mkString)
     }
-    lazy val CLASS: Parser[CharClass] = {
-      (loc <~ chr('[')) ~ opt(chr('^')) ~ ((not(chr(']')) ~> Range).* <~ ']' ~> Spacing) ^^ {
+    lazy val CLASS: Parser[CharClass] = rule {
+      (loc <~ chr('[')) ~ chr('^').? ~ ((not(chr(']')) ~> Range).* <~ chr(']') ~> Spacing) ^^ {
         //negative character class
         case (pos ~ Some(_) ~ rs) => CharClass(Position(pos.line, pos.column), false, rs)
         //positive character class
         case (pos ~ None ~ rs) => CharClass(Position(pos.line, pos.column), true, rs)
       }
     }
-    lazy val Range: Parser[CharClassElement] = (
-      CHAR ~ '-' ~ CHAR ^^ { case f~_~t => CharRange(f, t) }
+    lazy val Range: Parser[CharClassElement] = rule(
+      CHAR ~ chr('-') ~ CHAR ^^ { case f ~ _ ~ t => CharRange(f, t) }
     | CHAR ^^ { case c => OneChar(c) }
     )
     private val META_CHARS = List('"','\\')
@@ -122,11 +117,11 @@ object MacroPEGParser {
     | chr('\\') ~ crange('0','2') ~ crange('0','7') ~ crange('0','7') ^^ { 
         case _ ~ a ~ b ~ c => Integer.parseInt("" + a + b + c, 8).toChar
       }
-    | chr('\\') ~ crange('0','7') ~ opt(crange('0','7')) ^^ {
+    | chr('\\') ~ crange('0','7') ~ crange('0','7').? ^^ {
         case _ ~ a ~ Some(b) => Integer.parseInt("" + a + b, 8).toChar
         case _ ~ a ~ _ => Integer.parseInt("" + a, 8).toChar
       }
-    | not(META, " meta character " + META_CHARS.mkString("[",",","]") + " is not expected") ~>  any ^^ { case c => c}
+    | not(META) ~> any ^^ { case c => c}
     )
     lazy val Debug = string("Debug") <~ Spacing
     lazy val LPAREN = chr('(') <~ Spacing
@@ -156,7 +151,7 @@ object MacroPEGParser {
     )
     lazy val Space = chr(' ') | chr('\t') | EndOfLine
     lazy val EndOfLine = chr('\r') ~ chr('\n') | chr('\n') | chr('\r')
-    lazy val EndOfFile = not(any, "EOF Expected")
+    lazy val EndOfFile = not(any)
   }
 
   /**
@@ -167,14 +162,11 @@ object MacroPEGParser {
    * @return `Grammar` instance
    */
   def parse(fileName: String, content: java.io.Reader): Grammar = {
-    ParserCore.GRAMMAR(StreamReader(content)) match {
-      case ParserCore.Success(node, _) => node
-      case ParserCore.Failure(msg, rest) =>
-        val pos = rest.pos
-        throw new ParseException(Position(pos.line, pos.column), msg)
-      case ParserCore.Error(msg, rest) =>
-        val pos = rest.pos
-        throw new ParseException(Position(pos.line, pos.column), msg)
+    val input = Iterator.continually(content.read()).takeWhile(_ != -1).map(_.toChar).mkString
+    ParserCore.parse(input) match {
+      case Result.Success(node) => node
+      case Result.Failure(location, message) =>
+        throw ParseException(Position(location.line, location.column), message)
     }
   }
 

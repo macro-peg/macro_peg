@@ -100,14 +100,14 @@ Then, you can use `MacroPEGParser` and `MacroPEGEvaluator` as the followings:
 
 ```scala
 import com.github.kmizu.macro_peg._
-import MacroPEGRunner._
-import MacroPEGParser._
+import Runner._
+import Parser._
 val grammar = parse(
   """
         |S = P("") !.; P(r) = "a" P("a" r) / "b" P("b" r) / r;
   """.stripMargin
 )
-val evaluator = MacroPEGEvaluator(grammar)
+val evaluator = Evaluator(grammar)
 ```
 
 ```scala

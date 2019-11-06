@@ -3,7 +3,10 @@ package github
 package kmizu
 package macro_peg
 
-case class MacroPEGEvaluator(grammar: Ast.Grammar) {
+import com.github.kmizu.macro_peg.Ast.Position
+import com.github.kmizu.macro_peg.EvaluationResult.{Success, Failure}
+
+case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = EvaluationStrategy.CallByName) {
   private def expand(node: Ast.Expression): Ast.Expression = node match {
     case Ast.CharClass(pos, positive, elems) =>
       Ast.CharSet(pos, positive, elems.foldLeft(Set[Char]()){
@@ -17,44 +20,23 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
     case Ast.Optional(pos, body) => Ast.Optional(pos, expand(body))
     case Ast.AndPredicate(pos, body) => Ast.AndPredicate(pos, expand(body))
     case Ast.NotPredicate(pos, body) => Ast.NotPredicate(pos, expand(body))
+    case Ast.Call(pos, name, args) => Ast.Call(pos, name, args.map{expand})
     case e => e
   }
   private val FUNS: Map[Symbol, Ast.Expression] = {
     grammar.rules.map{r => r.name -> (if(r.args.isEmpty) expand(r.body) else Ast.Function(r.body.pos, r.args, expand(r.body)))}.toMap
   }
 
-  sealed trait Result {
-    def orElse(that: Result): Result
-    def flatMap(fun: String => Result): Result
-    def map(fun: String => String): Result
-    def get: String
-    def getOrElse(default: String): String
-  }
-  case class Success(value: String) extends Result {
-    def orElse(that: Result): Result = this
-    def flatMap(fun: String => Result): Result = fun(value)
-    def map(fun: String => String): Result = Success(fun(value))
-    def get: String = value
-    def getOrElse(default: String): String = value
-  }
-  case object Failure extends Result {
-    def orElse(that: Result): Result= that
-    def flatMap(fun: String => Result): Result = this
-    def map(fun: String => String): Result = this
-    def get: String = throw new IllegalStateException("Failure")
-    def getOrElse(default: String): String = default
-  }
-
-  private[this] def eval(input: String, exp: Ast.Expression): Result = {
-    def evaluateIn(input: String, exp: Ast.Expression, bindings: Map[Symbol, Ast.Expression]): Result = exp match {
+  private[this] def eval(input: String, exp: Ast.Expression): EvaluationResult = {
+    def evaluateIn(input: String, exp: Ast.Expression, bindings: Map[Symbol, Ast.Expression]): EvaluationResult = exp match {
       case Ast.Debug(pos, body) =>
         println("DEBUG: " + extract(body, bindings))
         Success(input)
       case Ast.Alternation(pos, l, r) =>
         evaluateIn(input, l, bindings).orElse(evaluateIn(input, r, bindings))
       case Ast.Sequence(pos, l, r) =>
-        for(in <- evaluateIn(input, l, bindings);
-            in <- evaluateIn(in, r, bindings)) yield in
+        for(in1 <- evaluateIn(input, l, bindings);
+            in2 <- evaluateIn(in1, r, bindings)) yield in2
       case Ast.AndPredicate(pos, body) =>
         evaluateIn(input, body, bindings).map{_ => input}
       case Ast.NotPredicate(pos, body) =>
@@ -67,8 +49,48 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
         val args = fun.args
         val body = fun.body
         if(args.length != params.length) throw EvaluationException(s"args length of $name should be equal to params length")
-        val nparams = args.zip(params.map(p => extract(p, bindings))).toMap
-        evaluateIn(input, body, bindings ++ nparams)
+        val result: Either[Failure.type, (String, Map[Symbol, Ast.Expression])]= strategy match {
+          case EvaluationStrategy.CallByName =>
+            Right(input -> args.zip(params.map(p => extract(p, bindings))).toMap)
+          case EvaluationStrategy.CallByValueSeq =>
+            def loop(input: String, params: List[Ast.Expression], values: List[Ast.Expression]): Either[Failure.type, (String, List[Ast.Expression])] = params match {
+              case p::ps =>
+                evaluateIn(input, p, bindings) match {
+                  case Success(rest) =>
+                    val value = Ast.StringLiteral(Position(-1, -1), input.substring(0, input.length - rest.length))
+                    loop(rest, ps, value::values)
+                  case Failure =>
+                    Left(Failure)
+                }
+              case Nil =>
+                Right(input -> values.reverse)
+            }
+            loop(input, params, Nil) match {
+              case Left(_) =>
+                Left(Failure)
+              case Right((input, values)) =>
+                Right(input -> args.zip(values).toMap)
+            }
+          case EvaluationStrategy.CallByValuePar =>
+            val results = params.map{p => evaluateIn(input, p, bindings)}
+            if(results.forall{_.isSuccess}) {
+              val values = results.map(_.asInstanceOf[Success].get).map{rest =>
+                Ast.StringLiteral(Position(-1, -1), input.substring(0, input.length - rest.length))
+              }
+              Right(input -> args.zip(values).toMap)
+            } else {
+              Left(Failure)
+            }
+        }
+        result match {
+          case Left(_) =>
+            Failure
+          case Right((input, nparams)) =>
+            println(s"call with: ${input} and ${nparams}")
+            val r = evaluateIn(input, body, bindings ++ nparams)
+            println(r)
+            r
+        }
       case Ast.Identifier(pos, name) =>
         val body = bindings(name)
         evaluateIn(input, body, bindings)
@@ -76,7 +98,7 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
         evaluateIn(input, body, bindings).orElse(Success(input))
       case Ast.Repeat0(pos, body) =>
         var in = input
-        var result: Result = Failure
+        var result: EvaluationResult = Failure
         while({result = evaluateIn(in, body, bindings); result != Failure}) {
           in = result.get
         }
@@ -137,8 +159,8 @@ case class MacroPEGEvaluator(grammar: Ast.Grammar) {
     case ast@Ast.CharSet(_, _, _) => ast
   }
 
-  def evaluate(input: String, start: Symbol): Result = {
+  def evaluate(input: String, start: Symbol): EvaluationResult = {
     val body = FUNS(start)
-    eval(input, body).map{str => input.substring(0, input.length - str.length)}
+    eval(input, body)
   }
 }
