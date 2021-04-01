@@ -23,7 +23,7 @@ scalacOptions ++= {
 
 libraryDependencies ++= Seq(
   "com.github.kmizu" %% "scomb" % "0.9.0",
-  "org.scalatest" %% "scalatest" % "3.0.8" % "test",
+  "org.scalatest" %% "scalatest" % "3.1.1" % "test",
   "org.scalacheck" %% "scalacheck" % "1.14.3" % "test"
 )
 
