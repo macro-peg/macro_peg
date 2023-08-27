@@ -2,9 +2,9 @@ organization := "com.github.kmizu"
 
 name := "macro_peg"
 
-scalaVersion := "2.12.10"
+scalaVersion := "3.3.0"
 
-crossScalaVersions := Seq(scalaVersion.value, "2.11.12", "2.13.0")
+crossScalaVersions := Seq(scalaVersion.value, "2.13.10")
 
 publishMavenStyle := true
 
@@ -14,7 +14,9 @@ scaladocBranch := "master"
 
 scalacOptions in (Compile, doc) ++= { Seq(
   "-sourcepath", baseDirectory.value.getAbsolutePath,
-  "-doc-source-url", s"https://github.com/kmizu/macro_peg/tree/${scaladocBranch.value}€{FILE_PATH}.scala"
+  "-doc-source-url", s"https://github.com/kmizu/macro_peg/tree/${scaladocBranch.value}€{FILE_PATH}.scala",
+  "-rewrite",
+  "-source", "3.2"
 )}
 
 scalacOptions ++= {
@@ -22,9 +24,9 @@ scalacOptions ++= {
 }
 
 libraryDependencies ++= Seq(
-  "com.github.kmizu" %% "scomb" % "0.9.0",
-  "org.scalatest" %% "scalatest" % "3.0.8" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.14.2" % "test"
+  ("com.github.kmizu" %% "scomb" % "0.9.0").cross(CrossVersion.for3Use2_13),
+  "org.scalatest" %% "scalatest" % "3.2.16" % "test",
+  "org.scalacheck" %% "scalacheck" % "1.15.4" % "test"
 )
 
 

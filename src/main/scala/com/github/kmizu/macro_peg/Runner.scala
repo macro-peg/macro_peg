@@ -145,6 +145,6 @@ object Runner {
   def evalGrammar(source: String, inputs: Seq[String], strategy: EvaluationStrategy = EvaluationStrategy.CallByName): Seq[EvaluationResult] = {
     val grammar = Parser.parse(source)
     val evaluator = Evaluator(grammar, strategy)
-    for(input <- inputs) yield evaluator.evaluate(input, 'S)
+    for(input <- inputs) yield evaluator.evaluate(input, Symbol("S"))
   }
 }
