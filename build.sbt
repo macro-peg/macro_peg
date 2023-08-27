@@ -4,7 +4,7 @@ name := "macro_peg"
 
 scalaVersion := "3.3.0"
 
-crossScalaVersions := Seq(scalaVersion.value, "2.13.10")
+crossScalaVersions := Seq(scalaVersion.value, "2.13.11")
 
 publishMavenStyle := true
 
