@@ -116,7 +116,7 @@ val inputs = List(
   "bbba", "bbab", "babb", "abbb",
    "aabb", "abba", "bbaa", "baab", "abab", "baba"
 )
-inputs.map{input => s"${input} => ${evaluator.evaluate(input, 'S)}"}.mkString("\n")
+inputs.map{input => s"${input} => ${evaluator.evaluate(input, Symbol("S"))}"}.mkString("\n")
 
 evalGrammar(
        """

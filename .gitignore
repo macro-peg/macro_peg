@@ -8,3 +8,4 @@ target/
 /bin/
 _site/
 .jekyll-cache/
+.bsp/
