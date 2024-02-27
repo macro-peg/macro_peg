@@ -2,9 +2,9 @@ organization := "com.github.kmizu"
 
 name := "macro_peg"
 
-scalaVersion := "3.3.0"
+scalaVersion := "3.3.1"
 
-crossScalaVersions := Seq(scalaVersion.value, "2.13.10")
+crossScalaVersions := Seq(scalaVersion.value, "2.13.13")
 
 publishMavenStyle := true
 
@@ -25,7 +25,7 @@ scalacOptions ++= {
 
 libraryDependencies ++= Seq(
   ("com.github.kmizu" %% "scomb" % "0.9.0").cross(CrossVersion.for3Use2_13),
-  "org.scalatest" %% "scalatest" % "3.2.16" % "test",
+  "org.scalatest" %% "scalatest" % "3.2.18" % "test",
   "org.scalacheck" %% "scalacheck" % "1.17.0" % "test"
 )
 
