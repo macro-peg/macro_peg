@@ -25,7 +25,7 @@ scalacOptions ++= {
 
 libraryDependencies ++= Seq(
   ("com.github.kmizu" %% "scomb" % "0.9.0").cross(CrossVersion.for3Use2_13),
-  "org.scalatest" %% "scalatest" % "3.2.18" % "test",
+  "org.scalatest" %% "scalatest" % "3.2.19" % "test",
   "org.scalacheck" %% "scalacheck" % "1.17.0" % "test"
 )
 
