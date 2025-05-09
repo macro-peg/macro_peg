@@ -2,7 +2,7 @@ organization := "com.github.kmizu"
 
 name := "macro_peg"
 
-scalaVersion := "3.3.4"
+scalaVersion := "3.3.6"
 
 crossScalaVersions := Seq(scalaVersion.value, "2.13.15")
 
