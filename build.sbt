@@ -4,8 +4,6 @@ name := "macro_peg"
 
 scalaVersion := "3.3.6"
 
-crossScalaVersions := Seq(scalaVersion.value, "2.13.15")
-
 publishMavenStyle := true
 
 val scaladocBranch = settingKey[String]("branch name for scaladoc -doc-source-url")
@@ -15,8 +13,6 @@ scaladocBranch := "master"
 scalacOptions in (Compile, doc) ++= { Seq(
   "-sourcepath", baseDirectory.value.getAbsolutePath,
   "-doc-source-url", s"https://github.com/kmizu/macro_peg/tree/${scaladocBranch.value}€{FILE_PATH}.scala",
-  "-rewrite",
-  "-source", "3.2"
 )}
 
 scalacOptions ++= {
@@ -25,8 +21,9 @@ scalacOptions ++= {
 
 libraryDependencies ++= Seq(
   ("com.github.kmizu" %% "scomb" % "0.9.0").cross(CrossVersion.for3Use2_13),
-  "org.scalatest" %% "scalatest" % "3.2.19" % "test",
-  "org.scalacheck" %% "scalacheck" % "1.17.0" % "test"
+  "org.scalatest" %% "scalatest" % "3.2.19" % Test,
+  "org.scalatestplus" %% "scalacheck-1-18" % "3.2.19.0" % Test,
+  "org.scalacheck" %% "scalacheck" % "1.15.4" % "test"
 )
 
 

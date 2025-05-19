@@ -1,11 +1,12 @@
 package com.github.kmizu.macro_peg
 
-import org.scalatest.{DiagrammedAssertions, FunSpec}
 import com.github.kmizu.macro_peg.combinator.MacroParsers._
-import org.scalatest.prop.GeneratorDrivenPropertyChecks
-import org.scalacheck.{Arbitrary, Gen}
+import org.scalatest.funspec.AnyFunSpec
+import org.scalatest.diagrams.Diagrams
+import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
+import org.scalacheck.Gen
 
-class MacroParsersSpec extends FunSpec with DiagrammedAssertions with GeneratorDrivenPropertyChecks {
+class MacroParsersSpec extends AnyFunSpec with Diagrams with ScalaCheckDrivenPropertyChecks {
   describe("MacroParsers Example") {
     it("palindrome") {
       object Palindrome {
