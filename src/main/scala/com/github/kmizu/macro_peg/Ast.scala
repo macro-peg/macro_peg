@@ -28,9 +28,102 @@ object Ast {
 
     def isWellFormed: Boolean = {
       val ruleMapping = rules.map{r => r.name -> r}.toMap
-      val startRule = rules.head
-      val startExpression = startRule.body
-      ???
+      val ruleNames = ruleMapping.keySet
+
+      // Check undefined references
+      def checkDefined(exp: Expression, env: Set[Symbol]): Boolean = exp match {
+        case Sequence(_, l, r) => checkDefined(l, env) && checkDefined(r, env)
+        case Alternation(_, l, r) => checkDefined(l, env) && checkDefined(r, env)
+        case Repeat0(_, b) => checkDefined(b, env)
+        case Repeat1(_, b) => checkDefined(b, env)
+        case Optional(_, b) => checkDefined(b, env)
+        case AndPredicate(_, b) => checkDefined(b, env)
+        case NotPredicate(_, b) => checkDefined(b, env)
+        case Call(_, name, args) =>
+          (env(name) || ruleNames(name)) && args.forall(a => checkDefined(a, env))
+        case Identifier(_, name) => env(name) || ruleNames(name)
+        case Function(_, args, body) => checkDefined(body, env ++ args.toSet)
+        case Debug(_, b) => checkDefined(b, env)
+        case _ => true
+      }
+      if(!rules.forall(r => checkDefined(r.body, r.args.toSet))) return false
+
+      import scala.collection.mutable.{Map => MutableMap}
+      val nullable: MutableMap[Symbol, Boolean] = MutableMap.empty
+      ruleNames.foreach(n => nullable(n) = false)
+
+      def exprNullable(exp: Expression, env: Set[Symbol]): Boolean = exp match {
+        case Sequence(_, l, r) => exprNullable(l, env) && exprNullable(r, env)
+        case Alternation(_, l, r) => exprNullable(l, env) || exprNullable(r, env)
+        case Repeat0(_, _) => true
+        case Repeat1(_, b) => exprNullable(b, env)
+        case Optional(_, _) => true
+        case AndPredicate(_, _) => true
+        case NotPredicate(_, _) => true
+        case StringLiteral(_, s) => s.isEmpty
+        case Wildcard(_) => false
+        case CharSet(_, _, _) => false
+        case CharClass(_, _, _) => false
+        case Call(_, name, _) => if(env(name)) true else nullable.getOrElse(name, false)
+        case Identifier(_, name) => if(env(name)) true else nullable.getOrElse(name, false)
+        case Function(_, args, body) => exprNullable(body, env ++ args.toSet)
+        case Debug(_, b) => exprNullable(b, env)
+      }
+
+      var changed = true
+      while(changed) {
+        changed = false
+        for(r <- rules) {
+          val n = exprNullable(r.body, r.args.toSet)
+          if(n != nullable(r.name)) { nullable(r.name) = n; changed = true }
+        }
+      }
+
+      def nullableExp(exp: Expression, env: Set[Symbol]): Boolean = exprNullable(exp, env)
+
+      // repetition on nullable expression causes infinite loop
+      def checkRepetition(exp: Expression, env: Set[Symbol]): Boolean = exp match {
+        case Sequence(_, l, r) => checkRepetition(l, env) && checkRepetition(r, env)
+        case Alternation(_, l, r) => checkRepetition(l, env) && checkRepetition(r, env)
+        case Repeat0(_, b) => !nullableExp(b, env) && checkRepetition(b, env)
+        case Repeat1(_, b) => !nullableExp(b, env) && checkRepetition(b, env)
+        case Optional(_, b) => checkRepetition(b, env)
+        case AndPredicate(_, b) => checkRepetition(b, env)
+        case NotPredicate(_, b) => checkRepetition(b, env)
+        case Call(_, _, args) => args.forall(a => checkRepetition(a, env))
+        case Function(_, args, body) => checkRepetition(body, env ++ args.toSet)
+        case Debug(_, b) => checkRepetition(b, env)
+        case _ => true
+      }
+      if(!rules.forall(r => checkRepetition(r.body, r.args.toSet))) return false
+
+      // left recursion detection
+      def leadsToSelf(sym: Symbol, exp: Expression, env: Set[Symbol], visited: Set[Symbol]): Boolean = exp match {
+        case Sequence(_, l, r) =>
+          leadsToSelf(sym, l, env, visited) || (nullableExp(l, env) && leadsToSelf(sym, r, env, visited))
+        case Alternation(_, l, r) => leadsToSelf(sym, l, env, visited) || leadsToSelf(sym, r, env, visited)
+        case Repeat0(_, b) => leadsToSelf(sym, b, env, visited)
+        case Repeat1(_, b) => leadsToSelf(sym, b, env, visited)
+        case Optional(_, b) => leadsToSelf(sym, b, env, visited)
+        case AndPredicate(_, b) => leadsToSelf(sym, b, env, visited)
+        case NotPredicate(_, b) => leadsToSelf(sym, b, env, visited)
+        case Call(_, name, _) =>
+          if(name == sym) true
+          else if(ruleMapping.contains(name) && nullable(name) && !visited(name))
+            leadsToSelf(sym, ruleMapping(name).body, ruleMapping(name).args.toSet, visited + name)
+          else false
+        case Identifier(_, name) =>
+          if(name == sym) true
+          else if(ruleMapping.contains(name) && nullable(name) && !visited(name))
+            leadsToSelf(sym, ruleMapping(name).body, ruleMapping(name).args.toSet, visited + name)
+          else false
+        case Function(_, args, body) => leadsToSelf(sym, body, env ++ args.toSet, visited)
+        case Debug(_, b) => leadsToSelf(sym, b, env, visited)
+        case _ => false
+      }
+      if(rules.exists(r => leadsToSelf(r.name, r.body, r.args.toSet, Set()))) return false
+
+      true
     }
   }
   /** This class represents an AST of rule in PEG grammar.
