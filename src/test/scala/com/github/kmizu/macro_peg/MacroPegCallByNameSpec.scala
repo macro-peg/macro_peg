@@ -2,9 +2,10 @@ package com.github.kmizu.macro_peg
 
 import com.github.kmizu.macro_peg.EvaluationResult.{Failure, Success}
 import com.github.kmizu.macro_peg.Runner.evalGrammar
-import org.scalatest.{DiagrammedAssertions, FunSpec}
+import org.scalatest.funspec.AnyFunSpec
+import org.scalatest.diagrams.Diagrams
 
-class MacroPegCallByNameSpec extends FunSpec with DiagrammedAssertions {
+class MacroPegCallByNameSpec extends AnyFunSpec with Diagrams {
   describe("Macro PEG with call by name example") {
     it("palindrome") {
       val results = evalGrammar(
