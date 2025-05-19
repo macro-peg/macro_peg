@@ -30,7 +30,6 @@ case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = Evalua
   private[this] def eval(input: String, exp: Ast.Expression): EvaluationResult = {
     def evaluateIn(input: String, exp: Ast.Expression, bindings: Map[Symbol, Ast.Expression]): EvaluationResult = exp match {
       case Ast.Debug(pos, body) =>
-        println("DEBUG: " + extract(body, bindings))
         Success(input)
       case Ast.Alternation(pos, l, r) =>
         evaluateIn(input, l, bindings).orElse(evaluateIn(input, r, bindings))
@@ -86,10 +85,7 @@ case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = Evalua
           case Left(_) =>
             Failure
           case Right((input, nparams)) =>
-            println(s"call with: ${input} and ${nparams}")
-            val r = evaluateIn(input, body, bindings ++ nparams)
-            println(r)
-            r
+            evaluateIn(input, body, bindings ++ nparams)
         }
       case Ast.Identifier(pos, name) =>
         val body = bindings(name)
