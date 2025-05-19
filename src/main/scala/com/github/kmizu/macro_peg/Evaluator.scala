@@ -5,6 +5,7 @@ package macro_peg
 
 import com.github.kmizu.macro_peg.Ast.Position
 import com.github.kmizu.macro_peg.EvaluationResult.{Success, Failure}
+import scala.annotation.tailrec
 
 case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = EvaluationStrategy.CallByName) {
   private def expand(node: Ast.Expression): Ast.Expression = node match {
@@ -97,23 +98,26 @@ case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = Evalua
       case Ast.Optional(pos, body) =>
         evaluateIn(input, body, bindings).orElse(Success(input))
       case Ast.Repeat0(pos, body) =>
-        var in = input
-        var result: EvaluationResult = Failure
-        while({result = evaluateIn(in, body, bindings); result != Failure}) {
-          in = result.get
+        @tailrec
+        def loop(in: String): EvaluationResult = {
+          evaluateIn(in, body, bindings) match {
+            case Success(next) => loop(next)
+            case Failure => Success(in)
+          }
         }
-        Success(in)
+        loop(input)
       case Ast.Repeat1(pos, body) =>
-        var in = input
-        var result = evaluateIn(in, body, bindings)
-        result match {
+        evaluateIn(input, body, bindings) match {
           case Failure => Failure
           case Success(next) =>
-            var in: String = next
-            while({result = evaluateIn(in, body, bindings); result != Failure}) {
-              in = result.get
+            @tailrec
+            def loop(in: String): String = {
+              evaluateIn(in, body, bindings) match {
+                case Success(next) => loop(next)
+                case Failure => in
+              }
             }
-            Success(in)
+            Success(loop(next))
         }
       case Ast.StringLiteral(pos, target) =>
         if (input.startsWith(target)) Success(input.substring(target.length)) else Failure
