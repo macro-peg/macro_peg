@@ -131,7 +131,13 @@ object Ast {
     * @param pos position in source file
     * @param name the name of this rule.  It is referred in body
     * @param body the parsing expression which this rule represents */
-  case class Rule(pos: Position, name: Symbol, body: Expression, args: List[Symbol] = Nil) extends HasPosition
+  case class Rule(
+    pos: Position,
+    name: Symbol,
+    body: Expression,
+    args: List[Symbol] = Nil,
+    argTypes: List[Option[Type]] = Nil
+  ) extends HasPosition
   /** This trait represents common super-type of parsing expression AST. */
   sealed trait Expression extends HasPosition
   /** This class represents an AST of sequence (e1 e2).
