@@ -36,10 +36,18 @@ object Parser {
       case pos ~ rules => Grammar(Position(pos.line, pos.column), rules)
     }
 
-    lazy val Definition: Parser[Rule] = rule(Ident  ~ ((LPAREN ~> Arg.repeat1By(COMMA) <~ RPAREN).? <~ EQ) ~ (Expression <~ SEMI_COLON).commit) ^^ {
-      case name ~ argsOpt ~ body =>
-        Rule(name.pos, name.name, body, argsOpt.getOrElse(List()).map(_._1.name))
-    }
+    lazy val Definition: Parser[Rule] =
+      rule(Ident  ~ ((LPAREN ~> Arg.repeat1By(COMMA) <~ RPAREN).? <~ EQ) ~ (Expression <~ SEMI_COLON).commit) ^^ {
+        case name ~ argsOpt ~ body =>
+          val argsWithTypes = argsOpt.getOrElse(List())
+          Rule(
+            name.pos,
+            name.name,
+            body,
+            argsWithTypes.map(_._1.name),
+            argsWithTypes.map(_._2)
+          )
+      }
 
     lazy val Arg: Parser[(Identifier, Option[Type])] = rule(Ident ~ (COLON ~> TypeTree).?) ^^ { case id ~ tpe => (id, tpe)}
 
