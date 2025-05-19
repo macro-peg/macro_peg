@@ -1,7 +1,8 @@
 ## Macro PEG: PEG with macro-like rules
  
 [![Gitter](https://badges.gitter.im/kmizu/macro_peg.svg)](https://gitter.im/kmizu/macro_peg?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
-[![CI](https://github.com/kmizu/macro_peg/actions/workflows/ci.yml/badge.svg)](https://github.com/kmizu/macro_peg/actions/workflows/ci.yml)
+![Build Status](https://github.com/klassic/klassic/actions/workflows/ci.yml/badge.svg)
+[![Build Status(https://github.com/macro-peg/macro_peg/actions/workflows/ci.yml/badge.svg)](https://github.com/kmizu/macro_peg/actions/workflows/ci.yml)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.11)
 [![Scaladoc](http://javadoc-badge.appspot.com/com.github.kmizu/macro_peg_2.11.svg?label=scaladoc)](http://javadoc-badge.appspot.com/com.github.kmizu/macro_peg_2.11/index.html#com.github.kmizu.macro_peg.package)
 [![Reference Status](https://www.versioneye.com/java/com.github.kmizu:macro_peg_2.11/reference_badge.svg?style=flat)](https://www.versioneye.com/java/com.github.kmizu:macro_peg_2.11/references)
