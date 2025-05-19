@@ -8,7 +8,7 @@ publishMavenStyle := true
 
 val scaladocBranch = settingKey[String]("branch name for scaladoc -doc-source-url")
 
-scaladocBranch := "master"
+scaladocBranch := "main"
 
 scalacOptions in (Compile, doc) ++= { Seq(
   "-sourcepath", baseDirectory.value.getAbsolutePath,
