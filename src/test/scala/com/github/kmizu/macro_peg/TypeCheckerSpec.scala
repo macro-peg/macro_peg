@@ -23,6 +23,19 @@ class TypeCheckerSpec extends AnyFunSpec with Diagrams {
           |Double(f: (?)->?, s: ?) = f(f(s));
         """.stripMargin)
       assert(!TypeChecker.wellTyped(grammar))
+      TypeChecker.check(grammar)
+    }
+
+    it("rejects invalid function usage") {
+      val grammar = Parser.parse(
+        """
+          |S = Double(Plus1, "aa") !.;
+          |Plus1(s: ?) = s s;
+          |Double(f: (?)->?, s: ?) = f(s) f;
+        """.stripMargin)
+      assertThrows[TypeError] {
+        TypeChecker.check(grammar)
+      }
     }
   }
 }

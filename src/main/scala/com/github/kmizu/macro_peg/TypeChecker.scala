@@ -52,5 +52,4 @@ object TypeChecker {
       val paramTypes = rule.argTypes.map(_.getOrElse(baseType))
       infer(rule.body, rule.args.zip(paramTypes).toMap ++ ruleTypes).isDefined
     }
-  }
 }
