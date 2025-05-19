@@ -21,7 +21,7 @@ class TypeCheckerSpec extends AnyFunSpec with Diagrams {
         """
           |S = Double(Plus1, "aa") !.;
           |Plus1(s: ?) = s s;
-          |Double(f: (?) -> ?, s: ?) = f(f(s));
+          |Double(f: ? -> ?, s: ?) = f(f(s));
         """.stripMargin)
       val checker = new TypeChecker(grammar)
       assert(checker.check().isRight)

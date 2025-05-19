@@ -57,6 +57,7 @@ object Parser {
 
     lazy val RuleTypeTree: Parser[RuleType] = rule {
       (OPEN ~> (SimpleTypeTree.repeat1By(COMMA) <~ CLOSE) ~ (loc <~ ARROW) ~ SimpleTypeTree) ^^ { case paramTypes ~ pos ~ resultType => RuleType(Position(pos.line, pos.column), paramTypes, resultType) }
+    | SimpleTypeTree ~ (loc <~ ARROW) ~ SimpleTypeTree ^^ { case paramType ~ pos ~ resultType => RuleType(Position(pos.line, pos.column), List(paramType), resultType) }
     }
 
     lazy val SimpleTypeTree: Parser[SimpleType] = rule {
