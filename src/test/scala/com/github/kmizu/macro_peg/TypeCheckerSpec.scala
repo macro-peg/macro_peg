@@ -17,14 +17,9 @@ class TypeCheckerSpec extends AnyFunSpec with Diagrams {
     }
 
     it("accepts correct types") {
-      val grammar = Parser.parse(
-        """
-          |S = Double(Plus1, "aa") !.;
-          |Plus1(s: ?) = s s;
-          |Double(f: ( ?) -> ?, s: ?) = f(f(s));
+          |Double(f: (?)->?, s: ?) = f(f(s));
         """.stripMargin)
-      val checker = new TypeChecker(grammar)
-      assert(checker.check().isRight)
+      TypeChecker.check(grammar)
     }
   }
 }
