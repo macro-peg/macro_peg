@@ -1,51 +1,73 @@
-## Macro PEG: PEG with macro-like rules
- 
-[![Gitter](https://badges.gitter.im/kmizu/macro_peg.svg)](https://gitter.im/kmizu/macro_peg?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
-[![Build Status](https://github.com/macro-peg/macro_peg/actions/workflows/ci.yml/badge.svg)](https://github.com/macro-peg/macro_peg/actions)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.11/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.github.kmizu/macro_peg_2.11)
-[![Reference Status](https://www.versioneye.com/java/com.github.kmizu:macro_peg_2.11/reference_badge.svg?style=flat)](https://www.versioneye.com/java/com.github.kmizu:macro_peg_2.11/references)
+# Macro PEG
 
-Macro PEG is an extended PEG by macro-like rules.  It seems that expressiveness of Macro PEG
-is greather than traditional PEG since Macro PEG can express palindromes.  This repository implements a Macro PEG
-interpreter (or matcher).
+Macro PEG extends Parsing Expression Grammars with macro-like rules and is implemented in Scala 3. It supports lambda-style macros so you can build higher-order grammars.
 
-### Grammar of Macro PEG in Pseudo PEG
+## Grammar Overview
 
-Note that spacing is ommited.
+Whitespace is omitted in the grammar below.
 
-    Grammer <- Rule* ";";
-    
-    Rule <- Identifier ("(" Identifier ("," Identifer)* ")")? "=" Expression ";";
-    
-    Expression <- Sequence ("/" Sequence)*;
-    
-    Sequence <- Prefix+;
-    
-    Prefix <-  ("&" / "!") Suffix;
-    
-    Suffix <- Primary "+"
-            /  Primary "*"
-            /  Primary "?"
-            /  Primary;
-    
-    Primary <- "(" Expression ")"
-             /  Call
-             / Debug
-             / Identifier
-             / StringLiteral
-             / CharacterClass;
-             
-    Debug <- "Debug" "(" Expression ")";
-    
-    StringLiteral <- "\\" (!"\\" .) "\\";
-    
-    Call <- Identifier "(" Expression ("," Expression)* ")";
-    
-    Identifier <- [a-zA-Z_] ([a-zA-Z0-9_])*;
-    
-    CharacterClass <- "[" "^"? (!"[" .)+ "]"
-    
-### Release Note
+```
+Grammar       <- Definition* ";"
+Definition    <- Identifier ("(" Arg ("," Arg)* ")")? "=" Expression ";"
+Arg           <- Identifier (":" Type)?
+Type          <- RuleType / "?"
+RuleType      <- ("(" Type ("," Type)* ")" "->" Type)
+               / (Type "->" Type)
+Expression    <- Sequence ("/" Sequence)*
+Sequence      <- Prefix+
+Prefix        <- ("&" / "!") Suffix
+               / Suffix
+Suffix        <- Primary "?"
+               / Primary "*"
+               / Primary "+"
+               / Primary
+Primary       <- "(" Expression ")"
+               / Call
+               / Debug
+               / Identifier
+               / StringLiteral
+               / CharacterClass
+               / Lambda
+Call          <- Identifier "(" Expression ("," Expression)* ")"
+Debug         <- "Debug" "(" Expression ")"
+Lambda        <- "(" Identifier ("," Identifier)* "->" Expression ")"
+StringLiteral <- '"' (!'"' .)* '"'
+CharacterClass<- '[' '^'? (!']' .)+ ']'
+```
+
+## Features
+
+- Macro rules with parameters
+- Lambda macros for higher-order grammars
+- Type annotations for macro parameters
+- Multiple evaluation strategies (call by name, call by value sequential/parallel)
+- Parser combinator library `MacroParsers`
+- Debug expressions for inspecting matches
+
+## Getting Started
+
+Add the library to your `build.sbt`:
+
+```scala
+libraryDependencies += "com.github.kmizu" %% "macro_peg" % "0.1.1-SNAPSHOT"
+```
+
+Then parse and evaluate a grammar:
+
+```scala
+import com.github.kmizu.macro_peg._
+
+val grammar = Parser.parse("""
+  S = Double((x -> x x), "aa") !.;
+  Double(f: ?, s: ?) = f(f(s));
+""")
+
+val evaluator = Evaluator(grammar)
+val result = evaluator.evaluate("aaaaaaaa", Symbol("S"))
+println(result)
+```
+
+## Release Note
 
 #### 0.0.9
 
@@ -85,116 +107,14 @@ Note that spacing is ommited.
 * [Fix bug of HOPEGParser](https://github.com/kmizu/macro_peg/commit/a7a72bcffd22401b9fec7a71ff2a5992e6fe7448)
 * [Arithmetic HOPEG example](https://github.com/kmizu/macro_peg/commit/1aadc5585490a13e6eb7cdbf60547eea1b424052)
 
-### Usage
+## Running Tests
 
-Note that the behaviour could change.
+Execute the following command:
 
-Add the following lines to your build.sbt file:
-
-```scala
-libraryDependencies += "com.github.kmizu" %% "macro_peg" % "0.1.0"
+```bash
+sbt test
 ```
 
-Then, you can use `MacroPEGParser` and `MacroPEGEvaluator` as the followings:
+## License
 
-```scala
-import com.github.kmizu.macro_peg._
-import Runner._
-import Parser._
-val grammar = parse(
-  """
-        |S = P("") !.; P(r) = "a" P("a" r) / "b" P("b" r) / r;
-  """.stripMargin
-)
-val evaluator = Evaluator(grammar)
-
-val inputs = List(
-  "a", "b", "aa", "bb", "ab", "ba", "aaa", "bbb", "aba", "bab", "abb", "baa", "aab", "bba",
-  "aaaa", "bbbb", 
-  "aaab", "aaba", "abaa", "baaa",
-  "bbba", "bbab", "babb", "abbb",
-   "aabb", "abba", "bbaa", "baab", "abab", "baba"
-)
-inputs.map{input => s"${input} => ${evaluator.evaluate(input, Symbol("S"))}"}.mkString("\n")
-
-evalGrammar(
-       """
-     |S = Modifiers(!"", "") !.;
-     |Modifiers(AlreadyLooked, Scope) = (!AlreadyLooked) (
-     |    &(Scope) Token("public") Modifiers(AlreadyLooked / "public", "public")
-     |  / &(Scope) Token("protected") Modifiers(AlreadyLooked / "protected", "protected")
-     |  / &(Scope) Token("private") Modifiers(AlreadyLooked / "private", "private")
-     |  / Token("static") Modifiers(AlreadyLooked / "static", Scope)
-     |  / Token("final") Modifiers(AlreadyLooked / "final", Scope)
-     |  / ""
-     |);
-     |Token(t) = t Spacing;
-     |Spacing = " "*;
-     """.stripMargin, 
-    Seq("public static final", "public public", "public static public", "final static public", "final final", "public private", "protected public", "public static")
-)
-
-evalGrammar(
-         """
-     |S = ReadRight("") !.;
-     |// the number of occurence of '1 represents a natural number.
-     |// a-b=c
-     |// Essentially, this checks a=b+c.
-     |ReadRight(Right)
-     |  = &("1"* "-" Right "1") ReadRight(Right "1")
-     |  / &("1"* "-" Right "=") ReadDiff(Right, "");
-     |
-     |ReadDiff(Right, Diff)
-     |  = &("1"* "-" Right "=" Diff "1") ReadDiff(Right, Diff "1")
-     |  / &("1"* "-" Right "=" Diff !.) Check(Right, Diff);
-     |
-     |Check(Right, Diff)
-     |  = Right Diff "-" Right "=" Diff;
-     """.stripMargin,
-     Seq("11-1=1", "1-1=", "111-11=1", // should match
-         "111-1=1",  "111-1=111", "1-11=") // should not match
-   )
-
-evalGrammar(
-         """
-       |S = ReadLeft("", "") !.;
-       |// the number of occurence of '1 represents a natural number.
-       |// |Seq| is the length of a sequence Seq.
-       |// ^ is exponent operator
-       |// ReadLeft("", "") checks input is a correct expression a^b=c.
-       |
-       |// Read a.
-       |// LeftAsOnes is a sequence of "1" where |LeftAsOnes| = |a|.
-       |// LeftAsDots is a sequence of . where |LeftAsDots| = |a|.
-       |ReadLeft(LeftAsOnes, LeftAsDots)
-       |  = &(LeftAsOnes "1") ReadLeft(LeftAsOnes "1", LeftAsDots .)
-       |  / &(LeftAsOnes "^") ComputePadding(LeftAsOnes, LeftAsDots, "");
-       |
-       |// Compute Padding which is a sequene of .
-       |// where |Padding| + |LeftAsDots| = |Input|
-       |ComputePadding(LeftAsOnes, LeftAsDots, Padding)
-       |  = &(Padding LeftAsDots .) ComputePadding(LeftAsOnes, LeftAsDots, Padding .)
-       |  / &(Padding LeftAsDots !.) ReadRight(LeftAsOnes, Padding, "", "1");
-       |
-       |// Read b.
-       |// Exp = a^Right.
-       |ReadRight(Left, Padding, Right, Exp)
-       |  = &(Left "^" Right "1") Multiply(Left, Padding, Right "1", Exp, "", "")
-       |  / &(Left "^" Right "=") Check(Left, Right, Exp);
-       |
-       |// Compute Left * OldExp.
-       |// This adds OldExp Left times into Exp.
-       |// I is a loop counter.
-       |Multiply(Left, Padding, Right, OldExp, Exp, I)
-       |  = &(Padding I .) Multiply(Left, Padding, Right, OldExp, Exp OldExp, I .)
-       |  / &(Padding I !.) ReadRight(Left, Padding, Right, Exp);
-       |
-       |// Check whole input.
-       |Check(Left, Right, Exp)
-       |  = Left "^" Right "=" Exp;
-       """.stripMargin,
-       Seq("11^111=11111111", "11^=1", "1^11=1", "^11=", 
-           "11^111=1111111",  "11^111=111111111")
-)
-```
-      
+This project is released under the MIT License.
