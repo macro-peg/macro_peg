@@ -11,8 +11,7 @@ class LambdaEvalSpec extends AnyFunSpec with Diagrams {
         """S = Double((x -> x x), "aa") !.;
           |Double(f: ?, s: ?) = f(f(s));
         """.stripMargin)
-      val expanded = MacroExpander.expandGrammar(grammar)
-      val evaluator = Evaluator(expanded)
+      val evaluator = Evaluator(grammar)
       val resultSuccess = evaluator.evaluate("aaaaaaaa", Symbol("S"))
       val resultFailure = evaluator.evaluate("aaaa", Symbol("S"))
       assert(resultSuccess == Success(""))

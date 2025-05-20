@@ -12,8 +12,7 @@ class HigherOrderEvalSpec extends AnyFunSpec with Diagrams {
           |Plus1(s: ?) = s s;
           |Double(f: ?, s: ?) = f(f(s));
         """.stripMargin)
-      val expanded = MacroExpander.expandGrammar(grammar)
-      val evaluator = Evaluator(expanded)
+      val evaluator = Evaluator(grammar)
       val resultSuccess = evaluator.evaluate("aaaaaaaa", Symbol("S"))
       val resultFailure = evaluator.evaluate("aaaa", Symbol("S"))
       assert(resultSuccess == Success(""))
