@@ -11,10 +11,11 @@ object Interpreter {
   }
 
   def fromGrammar(grammar: Grammar, strategy: EvaluationStrategy = EvaluationStrategy.CallByName): Interpreter = {
-    val checker = new TypeChecker(grammar)
+    val expanded = MacroExpander.expandGrammar(grammar)
+    val checker = new TypeChecker(expanded)
     checker.check() match {
       case Left(TypeError(pos, msg)) => throw TypeCheckException(pos, msg)
-      case Right(_) => new Interpreter(grammar, strategy)
+      case Right(_) => new Interpreter(expanded, strategy)
     }
   }
 }

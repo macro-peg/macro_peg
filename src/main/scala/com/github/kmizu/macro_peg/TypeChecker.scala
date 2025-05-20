@@ -7,13 +7,36 @@ case class TypeError(pos: Position, message: String)
 class TypeChecker(grammar: Grammar) {
   private val simple: SimpleType = SimpleType(DUMMY_POSITION)
 
-  private val ruleTypes: Map[Symbol, Type] = grammar.rules.map { r =>
-    val paramTpes = r.argTypes.map(_.getOrElse(simple))
-    val tpe: Type =
-      if(r.args.isEmpty) simple
-      else RuleType(DUMMY_POSITION, paramTpes, simple)
-    r.name -> tpe
-  }.toMap
+  private val ruleTypes: Map[Symbol, Type] = {
+    var types = grammar.rules.map { r =>
+      val paramTpes = r.argTypes.map(_.getOrElse(simple))
+      val tpe: Type =
+        if (r.args.isEmpty) simple
+        else RuleType(DUMMY_POSITION, paramTpes, simple)
+      r.name -> tpe
+    }.toMap
+
+    var changed = true
+    while(changed) {
+      changed = false
+      for(r <- grammar.rules) {
+        val paramTypes = r.argTypes.map(_.getOrElse(simple))
+        val env = types ++ r.args.zip(paramTypes)
+        infer(r.body, env) match {
+          case Right(resType) =>
+            val newType =
+              if(r.args.isEmpty) resType
+              else RuleType(DUMMY_POSITION, paramTypes, resType)
+            if(!same(types(r.name), newType)) {
+              types += r.name -> newType
+              changed = true
+            }
+          case Left(_) => // ignore here, will be reported in check()
+        }
+      }
+    }
+    types
+  }
 
   private def same(t1: Type, t2: Type): Boolean = (t1, t2) match {
     case (_: SimpleType, _: SimpleType) => true
