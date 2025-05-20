@@ -143,8 +143,9 @@ object Runner {
     * @return sequence of results
     */
   def evalGrammar(source: String, inputs: Seq[String], strategy: EvaluationStrategy = EvaluationStrategy.CallByName): Seq[EvaluationResult] = {
-    val grammar = Parser.parse(source)
-    val evaluator = Evaluator(grammar, strategy)
-    for(input <- inputs) yield evaluator.evaluate(input, Symbol("S"))
+    MacroPeg.fromString(source, strategy) match {
+      case Left(err) => throw new IllegalArgumentException(s"${err.pos.line}, ${err.pos.column}: ${err.message}")
+      case Right(engine) => inputs.map(in => engine.evaluate(in, Symbol("S")))
+    }
   }
 }
