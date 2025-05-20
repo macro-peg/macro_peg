@@ -2,7 +2,7 @@ package com.github.kmizu.macro_peg
 
 import Ast._
 
-case class TypeError(pos: Position, message: String)
+import com.github.kmizu.macro_peg.TypeError
 
 class TypeChecker(grammar: Grammar) {
   private val simple: SimpleType = SimpleType(DUMMY_POSITION)

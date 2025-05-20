@@ -95,18 +95,16 @@ Add the following lines to your build.sbt file:
 libraryDependencies += "com.github.kmizu" %% "macro_peg" % "0.1.0"
 ```
 
-Then, you can use `MacroPEGParser` and `MacroPEGEvaluator` as the followings:
+Then, you can use `MacroPeg` which guarantees that grammars are type checked before evaluation:
 
 ```scala
 import com.github.kmizu.macro_peg._
 import Runner._
-import Parser._
-val grammar = parse(
+val engine = MacroPeg.fromString(
   """
         |S = P("") !.; P(r) = "a" P("a" r) / "b" P("b" r) / r;
   """.stripMargin
-)
-val evaluator = Evaluator(grammar)
+).getOrElse(throw new RuntimeException("invalid grammar"))
 
 val inputs = List(
   "a", "b", "aa", "bb", "ab", "ba", "aaa", "bbb", "aba", "bab", "abb", "baa", "aab", "bba",
@@ -115,7 +113,7 @@ val inputs = List(
   "bbba", "bbab", "babb", "abbb",
    "aabb", "abba", "bbaa", "baab", "abab", "baba"
 )
-inputs.map{input => s"${input} => ${evaluator.evaluate(input, Symbol("S"))}"}.mkString("\n")
+inputs.map(input => s"$input => ${engine.evaluate(input, Symbol("S"))}").mkString("\n")
 
 evalGrammar(
        """
