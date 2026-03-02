@@ -521,5 +521,79 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses begin-rescue-ensure blocks") {
+      val input =
+        """begin
+          |  x = 1
+          |rescue Error => e
+          |  x = 2
+          |ensure
+          |  x = 3
+          |end""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          BeginRescue(
+            List(Assign("x", IntLiteral(1), UnknownSpan)),
+            List(
+              RescueClause(
+                List(ConstRef(List("Error"), UnknownSpan)),
+                Some("e"),
+                List(Assign("x", IntLiteral(2), UnknownSpan)),
+                UnknownSpan
+              )
+            ),
+            Nil,
+            List(Assign("x", IntLiteral(3), UnknownSpan)),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses singleton class definition") {
+      val input =
+        """class << self
+          |  def x; 1; end
+          |end""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          SingletonClassDef(
+            SelfExpr(UnknownSpan),
+            List(
+              Def("x", Nil, List(ExprStmt(IntLiteral(1), UnknownSpan)), UnknownSpan)
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses instance/class/global variables and assignments") {
+      val input =
+        """@x = 1
+          |@@y = 2
+          |$z = 3
+          |w = @x + @@y
+          |v = $z""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign("@x", IntLiteral(1), UnknownSpan),
+          Assign("@@y", IntLiteral(2), UnknownSpan),
+          Assign("$z", IntLiteral(3), UnknownSpan),
+          Assign("w", BinaryOp(InstanceVar("@x", UnknownSpan), "+", ClassVar("@@y", UnknownSpan), UnknownSpan), UnknownSpan),
+          Assign("v", GlobalVar("$z", UnknownSpan), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
   }
 }

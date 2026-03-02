@@ -16,8 +16,11 @@ object RubyAst {
   case class ExprStmt(expr: Expr, span: Span = UnknownSpan) extends Statement
   case class Assign(name: String, value: Expr, span: Span = UnknownSpan) extends Statement
   case class Return(value: Option[Expr], span: Span = UnknownSpan) extends Statement
+  case class RescueClause(exceptionClasses: List[Expr], variable: Option[String], body: List[Statement], span: Span = UnknownSpan) extends Node
+  case class BeginRescue(body: List[Statement], rescues: List[RescueClause], elseBody: List[Statement], ensureBody: List[Statement], span: Span = UnknownSpan) extends Statement
   case class Def(name: String, params: List[String], body: List[Statement], span: Span = UnknownSpan) extends Statement
   case class ClassDef(name: String, body: List[Statement], span: Span = UnknownSpan, superClass: Option[Expr] = None) extends Statement
+  case class SingletonClassDef(receiver: Expr, body: List[Statement], span: Span = UnknownSpan) extends Statement
   case class ModuleDef(name: String, body: List[Statement], span: Span = UnknownSpan) extends Statement
 
   case class IntLiteral(value: Long, span: Span = UnknownSpan) extends Expr
@@ -27,6 +30,9 @@ object RubyAst {
   case class NilLiteral(span: Span = UnknownSpan) extends Expr
   case class SelfExpr(span: Span = UnknownSpan) extends Expr
   case class LocalVar(name: String, span: Span = UnknownSpan) extends Expr
+  case class InstanceVar(name: String, span: Span = UnknownSpan) extends Expr
+  case class ClassVar(name: String, span: Span = UnknownSpan) extends Expr
+  case class GlobalVar(name: String, span: Span = UnknownSpan) extends Expr
   case class ConstRef(path: List[String], span: Span = UnknownSpan) extends Expr
   case class ArrayLiteral(elements: List[Expr], span: Span = UnknownSpan) extends Expr
   case class HashLiteral(entries: List[(Expr, Expr)], span: Span = UnknownSpan) extends Expr

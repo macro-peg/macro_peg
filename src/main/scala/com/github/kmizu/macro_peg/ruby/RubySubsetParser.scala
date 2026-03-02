@@ -44,6 +44,7 @@ object RubySubsetParser {
 
   private lazy val reservedWord: P[String] =
     (
+      "begin".s /
       "def".s /
       "class".s /
       "module".s /
@@ -51,6 +52,8 @@ object RubySubsetParser {
       "elsif".s /
       "else".s /
       "do".s /
+      "rescue".s /
+      "ensure".s /
       "unless".s /
       "end".s /
       "return".s /
@@ -71,6 +74,38 @@ object RubySubsetParser {
 
   private lazy val constName: P[String] =
     token((constStart ~ identCont.*).map { case h ~ t => h + t.mkString })
+
+  private lazy val instanceVarName: P[String] =
+    token(("@".s ~ identifierRaw).map { case _ ~ name => s"@$name" })
+
+  private lazy val classVarName: P[String] =
+    token(("@@".s ~ identifierRaw).map { case _ ~ name => s"@@$name" })
+
+  private lazy val globalVarName: P[String] =
+    token(
+      ("$".s ~ identifierRaw).map { case _ ~ name => s"$$$name" } /
+        ("$".s ~ range('0' to '9').+).map { case _ ~ digits => s"$$${digits.mkString}" } /
+        "$!".s /
+        "$@".s /
+        "$&".s /
+        "$`".s /
+        "$'".s /
+        "$+".s /
+        "$~".s /
+        "$/".s /
+        "$\\".s /
+        "$,".s /
+        "$.".s /
+        "$;".s /
+        "$<".s /
+        "$>".s /
+        "$_".s /
+        "$:".s /
+        "$?".s /
+        "$=".s /
+        "$*".s /
+        "$$".s
+    )
 
   private lazy val constPathSegments: P[List[String]] =
     (constName ~ (sym("::") ~ constName).*).map {
@@ -143,8 +178,20 @@ object RubySubsetParser {
   private lazy val selfExpr: P[Expr] =
     kw("self").map(_ => SelfExpr())
 
-  private lazy val variable: P[Expr] =
+  private lazy val localVar: P[Expr] =
     identifier.map(LocalVar(_))
+
+  private lazy val instanceVar: P[Expr] =
+    instanceVarName.map(InstanceVar(_))
+
+  private lazy val classVar: P[Expr] =
+    classVarName.map(ClassVar(_))
+
+  private lazy val globalVar: P[Expr] =
+    globalVarName.map(GlobalVar(_))
+
+  private lazy val variable: P[Expr] =
+    localVar / instanceVar / classVar / globalVar
 
   private lazy val constRef: P[Expr] =
     constPathSegments.map(path => ConstRef(path))
@@ -284,8 +331,11 @@ object RubySubsetParser {
   private lazy val expr: P[Expr] =
     addSubExpr
 
+  private lazy val assignableName: P[String] =
+    identifier / instanceVarName / classVarName / globalVarName
+
   private lazy val assignStmt: P[Statement] =
-    (identifier ~ sym("=") ~ refer(expr)).map {
+    (assignableName ~ sym("=") ~ refer(expr)).map {
       case name ~ _ ~ value => Assign(name, value)
     }
 
@@ -304,7 +354,9 @@ object RubySubsetParser {
     }
 
   private lazy val statement: P[Statement] =
+    refer(beginStmt) /
     refer(defStmt) /
+      refer(singletonClassStmt) /
       refer(classStmt) /
       refer(moduleStmt) /
       refer(ifStmt) /
@@ -320,10 +372,46 @@ object RubySubsetParser {
   private lazy val blockStatements: P[List[Statement]] =
     blockStatementsUntil(kw("end"))
 
+  private lazy val rescueClause: P[RescueClause] =
+    (
+      kw("rescue") ~
+      sepBy1(refer(expr), sym(",")).? ~
+      (sym("=>") ~ identifier).?.map(_.map(_._2)) ~
+      statementSep.* ~
+      blockStatementsUntil(kw("rescue") / kw("else") / kw("ensure") / kw("end"))
+    ).map {
+      case _ ~ exceptionsOpt ~ variableOpt ~ _ ~ body =>
+        RescueClause(exceptionsOpt.getOrElse(Nil), variableOpt, body)
+    }
+
+  private lazy val beginStmt: P[Statement] =
+    (
+      kw("begin") ~ statementSep.* ~
+      blockStatementsUntil(kw("rescue") / kw("else") / kw("ensure") / kw("end")) ~
+      statementSep.* ~
+      rescueClause.* ~
+      statementSep.* ~
+      (kw("else") ~ statementSep.* ~ blockStatementsUntil(kw("ensure") / kw("end"))).? ~
+      statementSep.* ~
+      (kw("ensure") ~ statementSep.* ~ blockStatementsUntil(kw("end"))).? ~
+      statementSep.* ~ kw("end")
+    ).map {
+      case _ ~ _ ~ body ~ _ ~ rescues ~ _ ~ elseOpt ~ _ ~ ensureOpt ~ _ ~ _ =>
+        val elseBody = elseOpt.map { case _ ~ _ ~ statements => statements }.getOrElse(Nil)
+        val ensureBody = ensureOpt.map { case _ ~ _ ~ statements => statements }.getOrElse(Nil)
+        BeginRescue(body, rescues, elseBody, ensureBody)
+    }
+
   private lazy val defStmt: P[Statement] =
     (kw("def") ~ identifier ~ params.? ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
       case _ ~ name ~ maybeParams ~ _ ~ body ~ _ ~ _ =>
         Def(name, maybeParams.getOrElse(Nil), body)
+    }
+
+  private lazy val singletonClassStmt: P[Statement] =
+    (kw("class") ~ sym("<<") ~ refer(expr) ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
+      case _ ~ _ ~ receiver ~ _ ~ body ~ _ ~ _ =>
+        SingletonClassDef(receiver, body)
     }
 
   private lazy val classStmt: P[Statement] =

@@ -119,7 +119,7 @@ import com.github.kmizu.macro_peg.ruby.RubyFullParser
 val astEither = RubyFullParser.parse("""module M; if flag; :ok; end; end""")
 ```
 
-Current prototype coverage includes `class`/`module`/`def` (including class superclass headers like `class C < Base`), arrays/hashes, symbols, `if/elsif/else`, `unless`, postfix modifiers (`stmt if cond` / `stmt unless cond`), `return`, `self`, constant-path references (`A::B`), single/percent-quoted string literals (`'x'`, `%q{...}`, `%{...}`), command-style no-parentheses calls (`puts :ok`, `add 1, 2`), dot-call chains (including no-arg links like `user.profile.name`), bracket index calls (`ENV["HOME"]`), call-attached blocks (`do/end`, `{}`), and newline-separated statements.
+Current prototype coverage includes `class`/`module`/`def` (including class superclass headers like `class C < Base`, and singleton class `class << self`), arrays/hashes, symbols, `if/elsif/else`, `unless`, `begin/rescue/ensure`, postfix modifiers (`stmt if cond` / `stmt unless cond`), `return`, `self`, instance/class/global variables (`@x`, `@@x`, `$x`), constant-path references (`A::B`), single/percent-quoted string literals (`'x'`, `%q{...}`, `%{...}`), command-style no-parentheses calls (`puts :ok`, `add 1, 2`), dot-call chains (including no-arg links like `user.profile.name`), bracket index calls (`ENV["HOME"]`), call-attached blocks (`do/end`, `{}`), and newline-separated statements.
 
 To run Ruby upstream `.rb` corpus files against the current parser:
 

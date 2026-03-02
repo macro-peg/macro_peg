@@ -60,3 +60,4 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - FullSet寄せの次段として `return` / `self` / 定数パス（`A::B`）を AST と parser に追加。`self.log 1` の receiver command、`module A::B` / `class C::D` の名前解釈も対応して、Rubyの基本構文土台をさらに拡張した。
 - 昇格判断を早めるため、Ruby本家リポジトリから `test/ruby` `bootstraptest` `test/prism` を sparse checkout して `.rb` corpus を実際に流すランナー（`RubyCorpusRunner`）を追加。現状の成功率が低いことを数値で把握できる状態にした。
 - corpusの先頭落ちを潰すために、single-quote文字列・percent quote（`%q{}` / `%{}`）・`[]` 添字呼び出し・`class C < Base` ヘッダを追加。Ruby本家 `.rb` corpus の通過率が `2.33% (7/301)` から `4.98% (15/301)` に改善。
+- `next * 3` で FullSet向けの3機能を連続実装。`begin/rescue/ensure`、`class << self`、`@ivar/@@cvar/$gvar` の AST+parser+テストを追加して、構文土台を拡張した（この段階では corpus 成功率は 4.98% のまま）。
