@@ -42,6 +42,11 @@ CharacterClass<- '[' '^'? (!']' .)+ ']'
 - Type annotations for macro parameters
 - Multiple evaluation strategies (call by name, call by value sequential/parallel)
 - Parser combinator library `MacroParsers`
+- Rich diagnostics via `Diagnostic` (`parse`, `well-formedness`, `type-check`, `evaluation`, `generation`)
+- Static grammar validation (`GrammarValidator`) for undefined references, nullable repetition, and left recursion
+- Packrat-style memoization in evaluator (`evaluateWithDiagnostics`)
+- Parser generator backend (`codegen.ParserGenerator`) for first-order grammars
+- Combinator ergonomics: `label`, `cut`, `recover`, `trace`, and formatted failures
 - Debug expressions for inspecting matches
 
 ## Getting Started
@@ -65,6 +70,21 @@ val grammar = Parser.parse("""
 val evaluator = Evaluator(grammar)
 val result = evaluator.evaluate("aaaaaaaa", Symbol("S"))
 println(result)
+```
+
+For typed diagnostics and safe construction:
+
+```scala
+val interpreterEither = Interpreter.fromSourceEither("""S = "ab";""")
+val resultEither = interpreterEither.flatMap(_.evaluateEither("ac"))
+```
+
+For generated parser source code from a first-order grammar:
+
+```scala
+import com.github.kmizu.macro_peg.codegen.ParserGenerator
+
+val source = ParserGenerator.generateFromSource("""S = "a" "b";""")
 ```
 
 ## Release Note
