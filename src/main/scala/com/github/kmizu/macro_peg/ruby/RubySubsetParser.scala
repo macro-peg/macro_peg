@@ -15,6 +15,9 @@ object RubySubsetParser {
   private lazy val spacing: P[Unit] =
     (spaceChar / comment).*.map(_ => ())
 
+  private lazy val spacing1: P[Unit] =
+    (spaceChar / comment).+.void
+
   private def token[A](parser: P[A]): P[A] =
     (parser ~ spacing).map(_._1)
 
@@ -48,8 +51,11 @@ object RubySubsetParser {
       "nil".s
     ) <~ !identCont
 
+  private lazy val identifierNoSpace: P[String] =
+    (!reservedWord ~ identifierRaw).map(_._2)
+
   private lazy val identifier: P[String] =
-    token((!reservedWord ~ identifierRaw).map(_._2))
+    token(identifierNoSpace)
 
   private lazy val constStart: P[String] =
     range('A' to 'Z')
@@ -116,8 +122,16 @@ object RubySubsetParser {
   private lazy val callArgs: P[List[Expr]] =
     sym("(") ~> sepBy0(refer(expr), sym(",")) <~ sym(")")
 
+  private lazy val commandArgs: P[List[Expr]] =
+    sepBy1(refer(expr), sym(","))
+
   private lazy val functionCall: P[Expr] =
     (identifier ~ callArgs).map { case name ~ args => Call(None, name, args) }
+
+  private lazy val commandCall: P[Expr] =
+    ((identifierNoSpace <~ spacing1) ~ commandArgs).map {
+      case name ~ args => Call(None, name, args)
+    }
 
   private lazy val primaryNoCall: P[Expr] =
     integerLiteral /
@@ -162,7 +176,7 @@ object RubySubsetParser {
     sym("(") ~> sepBy0(identifier, sym(",")) <~ sym(")")
 
   private lazy val simpleStatement: P[Statement] =
-    ((assignStmt / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
+    ((assignStmt / commandCall.map(ExprStmt(_)) / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
       case stmt ~ Some(modifier) => modifier(stmt)
       case stmt ~ None => stmt
     }

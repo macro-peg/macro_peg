@@ -149,5 +149,60 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses command-style calls without parentheses") {
+      val input = "puts :ok; add 1, 2"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(None, "puts", List(SymbolLiteral("ok", UnknownSpan)), UnknownSpan),
+            UnknownSpan
+          ),
+          ExprStmt(
+            Call(None, "add", List(IntLiteral(1), IntLiteral(2)), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses command-style call with postfix modifier") {
+      val input = "log 1, 2 if ready"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          IfExpr(
+            LocalVar("ready"),
+            List(ExprStmt(Call(None, "log", List(IntLiteral(1), IntLiteral(2)), UnknownSpan), UnknownSpan)),
+            Nil,
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses command-style call inside def body") {
+      val input = "def greet(name); puts name; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Def(
+            "greet",
+            List("name"),
+            List(
+              ExprStmt(Call(None, "puts", List(LocalVar("name")), UnknownSpan), UnknownSpan)
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
   }
 }
