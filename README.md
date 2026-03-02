@@ -121,6 +121,22 @@ val astEither = RubyFullParser.parse("""module M; if flag; :ok; end; end""")
 
 Current prototype coverage includes `class`, `module`, `def`, arrays/hashes, symbols, `if/elsif/else`, `unless`, postfix modifiers (`stmt if cond` / `stmt unless cond`), `return`, `self`, constant-path references (`A::B`), command-style no-parentheses calls (`puts :ok`, `add 1, 2`), dot-call chains (including no-arg links like `user.profile.name`), call-attached blocks (`do/end`, `{}`), and newline-separated statements.
 
+To run Ruby upstream `.rb` corpus files against the current parser:
+
+```bash
+mkdir -p third_party/ruby3/upstream
+git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby.git third_party/ruby3/upstream/ruby
+cd third_party/ruby3/upstream/ruby
+git sparse-checkout set test/ruby bootstraptest test/prism
+cd ../../..
+sbt "runMain com.github.kmizu.macro_peg.ruby.RubyCorpusRunner"
+```
+
+Optional environment variables:
+
+- `RUBY_CORPUS_TIMEOUT_MS` (default: `1000`)
+- `RUBY_CORPUS_FAIL_SAMPLES` (default: `20`)
+
 ## Release Note
 
 #### 0.0.9
