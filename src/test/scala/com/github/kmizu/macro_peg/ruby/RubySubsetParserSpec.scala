@@ -265,5 +265,68 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses newline-separated statements") {
+      val input =
+        """x = 1
+          |y = 2""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign("x", IntLiteral(1), UnknownSpan),
+          Assign("y", IntLiteral(2), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses receiver parenthesized call with multiline do-end block") {
+      val input =
+        """items.each(1) do |x|
+          |  puts x
+          |end""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            CallWithBlock(
+              Call(Some(LocalVar("items")), "each", List(IntLiteral(1)), UnknownSpan),
+              Block(
+                List("x"),
+                List(ExprStmt(Call(None, "puts", List(LocalVar("x")), UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses multiline if/else without semicolons") {
+      val input =
+        """if ready
+          |  x = 1
+          |else
+          |  x = 2
+          |end""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          IfExpr(
+            LocalVar("ready"),
+            List(Assign("x", IntLiteral(1), UnknownSpan)),
+            List(Assign("x", IntLiteral(2), UnknownSpan)),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
   }
 }

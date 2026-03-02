@@ -55,3 +55,4 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - `statement -> block -> statement` の初期化循環を `refer(statement)` 遅延参照に切り替えて解消。
 - あわせて `items.each do ... end` が落ちる原因（block直前の空白未吸収）も修正して、`blockCallExpr <~ spacing` を入れた。
 - `RubySubsetParserSpec` と `sbt test` 全体を通して、ハング解消と既存回帰がないことを確認。
+- さらに「最終ゴールは FullSet」と再確認。方針をぶらさないため、今回の追加も FullSet移行に直結する土台（改行区切り文対応・`receiver.method(args)` + block対応）に限定して進めた。
