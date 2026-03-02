@@ -53,6 +53,8 @@ object RubySubsetParser {
       "do".s /
       "unless".s /
       "end".s /
+      "return".s /
+      "self".s /
       "true".s /
       "false".s /
       "nil".s
@@ -69,6 +71,11 @@ object RubySubsetParser {
 
   private lazy val constName: P[String] =
     token((constStart ~ identCont.*).map { case h ~ t => h + t.mkString })
+
+  private lazy val constPathSegments: P[List[String]] =
+    (constName ~ (sym("::") ~ constName).*).map {
+      case head ~ tail => head :: tail.map(_._2)
+    }
 
   private lazy val integerLiteral: P[Expr] =
     token(range('0' to '9').+).map(ds => IntLiteral(ds.mkString.toLong))
@@ -107,8 +114,14 @@ object RubySubsetParser {
   private lazy val nilLiteral: P[Expr] =
     kw("nil").map(_ => NilLiteral())
 
+  private lazy val selfExpr: P[Expr] =
+    kw("self").map(_ => SelfExpr())
+
   private lazy val variable: P[Expr] =
     identifier.map(LocalVar(_))
+
+  private lazy val constRef: P[Expr] =
+    constPathSegments.map(path => ConstRef(path))
 
   private lazy val parenExpr: P[Expr] =
     (sym("(") ~ refer(expr) ~ sym(")")).map { case _ ~ e ~ _ => e }
@@ -136,7 +149,7 @@ object RubySubsetParser {
     (identifier ~ callArgs).map { case name ~ args => Call(None, name, args) }
 
   private lazy val receiverForCommand: P[Expr] =
-    variable
+    constRef / selfExpr / variable
 
   private lazy val receiverCommandHead: P[Expr ~ String] =
     (receiverForCommand <~ sym(".")) ~ identifierNoSpace
@@ -164,6 +177,8 @@ object RubySubsetParser {
       symbolLiteral /
       boolLiteral /
       nilLiteral /
+      selfExpr /
+      constRef /
       arrayLiteral /
       hashLiteral /
       variable /
@@ -237,11 +252,16 @@ object RubySubsetParser {
       case name ~ _ ~ value => Assign(name, value)
     }
 
+  private lazy val returnStmt: P[Statement] =
+    (kw("return") ~ refer(expr).?).map {
+      case _ ~ value => Return(value)
+    }
+
   private lazy val params: P[List[String]] =
     sym("(") ~> sepBy0(identifier, sym(",")) <~ sym(")")
 
   private lazy val simpleStatement: P[Statement] =
-    ((assignStmt / blockCallStmt / receiverCommandCall.map(ExprStmt(_)) / commandCall.map(ExprStmt(_)) / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
+    ((returnStmt / assignStmt / blockCallStmt / receiverCommandCall.map(ExprStmt(_)) / commandCall.map(ExprStmt(_)) / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
       case stmt ~ Some(modifier) => modifier(stmt)
       case stmt ~ None => stmt
     }
@@ -270,15 +290,15 @@ object RubySubsetParser {
     }
 
   private lazy val classStmt: P[Statement] =
-    (kw("class") ~ constName ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
+    (kw("class") ~ constPathSegments ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
       case _ ~ name ~ _ ~ body ~ _ ~ _ =>
-        ClassDef(name, body)
+        ClassDef(name.mkString("::"), body)
     }
 
   private lazy val moduleStmt: P[Statement] =
-    (kw("module") ~ constName ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
+    (kw("module") ~ constPathSegments ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
       case _ ~ name ~ _ ~ body ~ _ ~ _ =>
-        ModuleDef(name, body)
+        ModuleDef(name.mkString("::"), body)
     }
 
   private lazy val modifierSuffix: P[Statement => Statement] =

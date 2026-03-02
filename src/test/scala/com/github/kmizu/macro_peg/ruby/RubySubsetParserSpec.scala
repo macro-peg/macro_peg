@@ -384,5 +384,82 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses return statement in method body") {
+      val input = "def f; return 1; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Def("f", Nil, List(Return(Some(IntLiteral(1)), UnknownSpan)), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses bare return with postfix modifier") {
+      val input = "return if done"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          IfExpr(
+            LocalVar("done"),
+            List(Return(None, UnknownSpan)),
+            Nil,
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses self expression and self receiver command call") {
+      val input = "x = self.name; self.log 1"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "x",
+            Call(Some(SelfExpr(UnknownSpan)), "name", Nil, UnknownSpan),
+            UnknownSpan
+          ),
+          ExprStmt(
+            Call(Some(SelfExpr(UnknownSpan)), "log", List(IntLiteral(1)), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses constant path expressions") {
+      val input = "x = JSON::Parser"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign("x", ConstRef(List("JSON", "Parser"), UnknownSpan), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses module/class names with constant paths") {
+      val input = "module A::B; class C::D; end; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ModuleDef(
+            "A::B",
+            List(ClassDef("C::D", Nil, UnknownSpan)),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
   }
 }
