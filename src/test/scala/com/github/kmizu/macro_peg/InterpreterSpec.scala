@@ -27,5 +27,14 @@ class InterpreterSpec extends AnyFunSpec with Diagrams {
       val result = interpreter.evaluate("aaaaaaaa", Symbol("S"))
       assert(result == Success(""))
     }
+
+    it("evaluates higher-order grammar via typed API") {
+      val grammar = """|
+        |S = Double((x -> x x), "aa") !.;
+        |Double(f: (?)->?, s: ?) = f(f(s));
+        |""".stripMargin
+      val result = Interpreter.fromSourceEither(grammar).flatMap(_.evaluateEither("aaaaaaaa"))
+      assert(result == Right(Success("")))
+    }
   }
 }

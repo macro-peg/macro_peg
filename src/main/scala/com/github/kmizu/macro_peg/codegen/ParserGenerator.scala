@@ -24,7 +24,7 @@ object ParserGenerator {
           hint = Some("fix grammar syntax before code generation")
         ))
     }
-    parsed.flatMap(generate(_, objectName, packageName, startRule))
+    parsed.flatMap(grammar => generateWithSource(grammar, source, objectName, packageName, startRule))
   }
 
   def generate(
@@ -32,6 +32,17 @@ object ParserGenerator {
     objectName: String = "GeneratedParser",
     packageName: Option[String] = None,
     startRule: Symbol = Symbol("S")
+  ): Either[Diagnostic, String] = {
+    val source = renderGrammar(grammar)
+    generateWithSource(grammar, source, objectName, packageName, startRule)
+  }
+
+  private def generateWithSource(
+    grammar: Grammar,
+    source: String,
+    objectName: String,
+    packageName: Option[String],
+    startRule: Symbol
   ): Either[Diagnostic, String] = {
     GrammarValidator.validate(grammar).left.map { err =>
       Diagnostic(
@@ -41,7 +52,7 @@ object ParserGenerator {
         hint = err.hint
       )
     }.flatMap { _ =>
-      generateInternal(grammar, objectName, packageName, startRule).left.map { err =>
+      generateInternal(grammar, source, objectName, packageName, startRule).left.map { err =>
         Diagnostic(
           phase = DiagnosticPhase.Generation,
           message = err.message,
@@ -54,6 +65,7 @@ object ParserGenerator {
 
   private def generateInternal(
     grammar: Grammar,
+    source: String,
     objectName: String,
     packageName: Option[String],
     startRule: Symbol
@@ -62,14 +74,20 @@ object ParserGenerator {
       return Left(GenerationError(Ast.DUMMY_POSITION, s"start rule `${startRule.name}` is not defined", Some("choose an existing rule as startRule")))
     }
 
-    val ruleNameMap = buildRuleNameMap(grammar.rules)
-
-    grammar.rules.find(_.args.nonEmpty) match {
-      case Some(r) =>
-        return Left(GenerationError(r.pos, s"rule `${r.name.name}` has parameters; generator currently supports first-order rules only", Some("expand/remove macro parameters before generation")))
-      case None =>
-        ()
+    if(isFirstOrder(grammar)) {
+      generateCombinatorBackend(grammar, objectName, packageName, startRule)
+    } else {
+      Right(generateInterpreterBackend(source, objectName, packageName, startRule))
     }
+  }
+
+  private def generateCombinatorBackend(
+    grammar: Grammar,
+    objectName: String,
+    packageName: Option[String],
+    startRule: Symbol
+  ): Either[GenerationError, String] = {
+    val ruleNameMap = buildRuleNameMap(grammar.rules)
 
     def emitExpression(exp: Expression): Either[GenerationError, String] = exp match {
       case Sequence(_, l, r) =>
@@ -108,7 +126,7 @@ object ParserGenerator {
         }
       case Call(pos, name, args) =>
         if(args.nonEmpty) {
-          Left(GenerationError(pos, s"call `${name.name}` has arguments; generator currently supports first-order rules only", Some("expand/remove macro arguments before generation")))
+          Left(GenerationError(pos, s"call `${name.name}` has arguments; first-order combinator backend cannot emit this", Some("use higher-order fallback backend")))
         } else {
           ruleNameMap.get(name) match {
             case Some(scalaName) => Right(s"refer($scalaName)")
@@ -116,7 +134,7 @@ object ParserGenerator {
           }
         }
       case Function(pos, _, _) =>
-        Left(GenerationError(pos, "lambda/function expression is not supported by parser generator", Some("use Interpreter/Evaluator for higher-order grammar execution")))
+        Left(GenerationError(pos, "lambda/function expression is not supported by first-order combinator backend", Some("use higher-order fallback backend")))
       case Debug(_, b) =>
         emitExpression(b).map(be => s"($be).display")
     }
@@ -153,6 +171,53 @@ object ParserGenerator {
     }
   }
 
+  private def generateInterpreterBackend(
+    source: String,
+    objectName: String,
+    packageName: Option[String],
+    startRule: Symbol
+  ): String = {
+    val packagePrefix = packageName.map(p => s"package $p\n\n").getOrElse("")
+    val start = escapeString(startRule.name)
+    val sourceLiteral = "\"" + escapeString(source) + "\""
+    s"""${packagePrefix}import com.github.kmizu.macro_peg._
+       |
+       |object $objectName {
+       |  private val grammarSource: String = $sourceLiteral
+       |
+       |  lazy val interpreterEither: Either[Diagnostic, Interpreter] =
+       |    Interpreter.fromSourceEither(grammarSource)
+       |
+       |  def evaluate(input: String, start: Symbol = Symbol("$start")): Either[Diagnostic, EvaluationResult.Success] =
+       |    interpreterEither.flatMap(_.evaluateEither(input, start))
+       |
+       |  def parse(input: String, start: Symbol = Symbol("$start")): Either[Diagnostic, EvaluationResult.Success] =
+       |    evaluate(input, start)
+       |
+       |  def parseAll(input: String, start: Symbol = Symbol("$start")): Either[String, String] =
+       |    evaluate(input, start).map(_.remained).left.map(_.format)
+       |}
+       |""".stripMargin
+  }
+
+  private def isFirstOrder(grammar: Grammar): Boolean = {
+    grammar.rules.forall(r => r.args.isEmpty && !containsHigherOrder(r.body))
+  }
+
+  private def containsHigherOrder(exp: Expression): Boolean = exp match {
+    case Sequence(_, l, r) => containsHigherOrder(l) || containsHigherOrder(r)
+    case Alternation(_, l, r) => containsHigherOrder(l) || containsHigherOrder(r)
+    case Repeat0(_, b) => containsHigherOrder(b)
+    case Repeat1(_, b) => containsHigherOrder(b)
+    case Optional(_, b) => containsHigherOrder(b)
+    case AndPredicate(_, b) => containsHigherOrder(b)
+    case NotPredicate(_, b) => containsHigherOrder(b)
+    case Call(_, _, args) => args.nonEmpty || args.exists(containsHigherOrder)
+    case Function(_, _, _) => true
+    case Debug(_, b) => containsHigherOrder(b)
+    case _ => false
+  }
+
   private def buildRuleNameMap(rules: List[Rule]): Map[Symbol, String] = {
     val used = scala.collection.mutable.Set.empty[String]
     var nameMap = Map.empty[Symbol, String]
@@ -177,6 +242,65 @@ object ParserGenerator {
     }
     if(cleaned.headOption.exists(_.isDigit)) "_" + cleaned else cleaned
   }
+
+  private def renderGrammar(grammar: Grammar): String = {
+    grammar.rules.map(renderRule).mkString("\n")
+  }
+
+  private def renderRule(rule: Rule): String = {
+    val argsText =
+      if(rule.args.isEmpty) ""
+      else {
+        val args = rule.args.zipWithIndex.map { case (argName, i) =>
+          rule.argTypes.lift(i).flatten match {
+            case Some(tpe) => s"${argName.name}: ${renderType(tpe)}"
+            case None => argName.name
+          }
+        }.mkString(", ")
+        s"($args)"
+      }
+    s"${rule.name.name}$argsText = ${renderExpression(rule.body)};"
+  }
+
+  private def renderType(tpe: Type): String = tpe match {
+    case SimpleType(_) => "?"
+    case RuleType(_, paramTypes, resultType) =>
+      val params = paramTypes.map(renderType).mkString(", ")
+      s"($params) -> ${renderType(resultType)}"
+  }
+
+  private def renderExpression(exp: Expression): String = exp match {
+    case Sequence(_, l, r) => s"(${renderExpression(l)} ${renderExpression(r)})"
+    case Alternation(_, l, r) => s"(${renderExpression(l)} / ${renderExpression(r)})"
+    case Repeat0(_, b) => s"(${renderExpression(b)})*"
+    case Repeat1(_, b) => s"(${renderExpression(b)})+"
+    case Optional(_, b) => s"(${renderExpression(b)})?"
+    case AndPredicate(_, b) => s"&(${renderExpression(b)})"
+    case NotPredicate(_, b) => s"!(${renderExpression(b)})"
+    case StringLiteral(_, target) => "\"" + escapeString(target) + "\""
+    case Wildcard(_) => "."
+    case CharClass(_, positive, elems) => renderCharClass(positive, elems)
+    case CharSet(_, positive, elems) =>
+      val sorted = elems.toList.sorted
+      val body = sorted.map(ch => unicodeEscape(ch)).mkString
+      if(positive) s"[$body]" else s"[^$body]"
+    case Debug(_, b) => s"Debug(${renderExpression(b)})"
+    case Identifier(_, name) => name.name
+    case Call(_, name, args) =>
+      s"${name.name}(${args.map(renderExpression).mkString(", ")})"
+    case Function(_, args, body) =>
+      s"(${args.map(_.name).mkString(", ")} -> ${renderExpression(body)})"
+  }
+
+  private def renderCharClass(positive: Boolean, elems: List[CharClassElement]): String = {
+    val body = elems.map {
+      case CharRange(from, to) => s"${unicodeEscape(from)}-${unicodeEscape(to)}"
+      case OneChar(ch) => unicodeEscape(ch)
+    }.mkString
+    if(positive) s"[$body]" else s"[^$body]"
+  }
+
+  private def unicodeEscape(ch: Char): String = "\\u%04x".format(ch.toInt)
 
   private def charLiteral(ch: Char): String = ch match {
     case '\n' => "'\\n'"

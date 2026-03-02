@@ -16,11 +16,26 @@ class ParserGeneratorSpec extends AnyFunSpec with Diagrams {
       assert(code.contains("def parseAll"))
     }
 
-    it("rejects grammars with macro parameters") {
+    it("generates interpreter-backed code for grammars with macro parameters") {
       val grammar = Parser.parse("S = F(\"a\"); F(x) = x;")
       val generated = ParserGenerator.generate(grammar)
-      assert(generated.isLeft)
-      assert(generated.left.toOption.get.phase == DiagnosticPhase.Generation)
+      assert(generated.isRight)
+      val code = generated.toOption.get
+      assert(code.contains("Interpreter.fromSourceEither"))
+      assert(code.contains("def evaluate"))
+      assert(code.contains("F(x) = x;"))
+    }
+
+    it("generates interpreter-backed code for lambda style higher-order grammar") {
+      val source = """|
+        |S = Double((x -> x x), "aa") !.;
+        |Double(f: ?, s: ?) = f(f(s));
+        |""".stripMargin
+      val generated = ParserGenerator.generateFromSource(source)
+      assert(generated.isRight)
+      val code = generated.toOption.get
+      assert(code.contains("Interpreter.fromSourceEither"))
+      assert(code.contains("Double((x -> x x), \\\"aa\\\")"))
     }
   }
 }

@@ -45,7 +45,7 @@ CharacterClass<- '[' '^'? (!']' .)+ ']'
 - Rich diagnostics via `Diagnostic` (`parse`, `well-formedness`, `type-check`, `evaluation`, `generation`)
 - Static grammar validation (`GrammarValidator`) for undefined references, nullable repetition, and left recursion
 - Packrat-style memoization in evaluator (`evaluateWithDiagnostics`)
-- Parser generator backend (`codegen.ParserGenerator`) for first-order grammars
+- Parser generator backend (`codegen.ParserGenerator`) for first-order grammars, with interpreter-backed fallback for higher-order grammars
 - Combinator ergonomics: `label`, `cut`, `recover`, `trace`, and formatted failures
 - Debug expressions for inspecting matches
 
