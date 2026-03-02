@@ -37,6 +37,10 @@ object RubySubsetParser {
     (
       "def".s /
       "class".s /
+      "module".s /
+      "if".s /
+      "else".s /
+      "unless".s /
       "end".s /
       "true".s /
       "false".s /
@@ -73,6 +77,15 @@ object RubySubsetParser {
       case _ ~ chars ~ _ => StringLiteral(chars.mkString)
     })
 
+  private lazy val symbolLiteral: P[Expr] =
+    (
+      (sym(":") ~ token(identifierRaw)).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
+    ) / (
+      (sym(":") ~ token(("\"".s ~ (escapedChar / plainStringChar).* ~ "\"".s).map {
+        case _ ~ chars ~ _ => chars.mkString
+      })).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
+    )
+
   private lazy val boolLiteral: P[Expr] =
     kw("true").map(_ => BoolLiteral(true)) /
       kw("false").map(_ => BoolLiteral(false))
@@ -108,6 +121,7 @@ object RubySubsetParser {
   private lazy val primaryNoCall: P[Expr] =
     integerLiteral /
       stringLiteral /
+      symbolLiteral /
       boolLiteral /
       nilLiteral /
       arrayLiteral /
@@ -149,14 +163,20 @@ object RubySubsetParser {
   private lazy val statement: P[Statement] =
     refer(defStmt) /
       refer(classStmt) /
+      refer(moduleStmt) /
+      refer(ifExpr) /
+      refer(unlessExpr) /
       assignStmt /
       refer(expr).map(ExprStmt(_))
 
   private lazy val topLevelStatements: P[List[Statement]] =
     sepBy0(statement, sym(";"))
 
+  private def blockStatementsUntil(stop: P[Any]): P[List[Statement]] =
+    (stop.and ~> success(Nil)) / sepBy1(statement, sym(";"))
+
   private lazy val blockStatements: P[List[Statement]] =
-    (kw("end").and ~> success(Nil)) / sepBy1(statement, sym(";"))
+    blockStatementsUntil(kw("end"))
 
   private lazy val defStmt: P[Statement] =
     (kw("def") ~ identifier ~ params.? ~ sym(";").* ~ blockStatements ~ sym(";").* ~ kw("end")).map {
@@ -168,6 +188,36 @@ object RubySubsetParser {
     (kw("class") ~ constName ~ sym(";").* ~ blockStatements ~ sym(";").* ~ kw("end")).map {
       case _ ~ name ~ _ ~ body ~ _ ~ _ =>
         ClassDef(name, body)
+    }
+
+  private lazy val moduleStmt: P[Statement] =
+    (kw("module") ~ constName ~ sym(";").* ~ blockStatements ~ sym(";").* ~ kw("end")).map {
+      case _ ~ name ~ _ ~ body ~ _ ~ _ =>
+        ModuleDef(name, body)
+    }
+
+  private lazy val ifExpr: P[Statement] =
+    (
+      kw("if") ~ refer(expr) ~ sym(";").* ~ blockStatementsUntil(kw("else") / kw("end")) ~
+      sym(";").* ~
+      (kw("else") ~ sym(";").* ~ blockStatementsUntil(kw("end"))).? ~
+      sym(";").* ~ kw("end")
+    ).map {
+      case _ ~ condition ~ _ ~ thenBody ~ _ ~ elseBodyOpt ~ _ ~ _ =>
+        val elseBody = elseBodyOpt.map { case _ ~ _ ~ body => body }.getOrElse(Nil)
+        IfExpr(condition, thenBody, elseBody)
+    }
+
+  private lazy val unlessExpr: P[Statement] =
+    (
+      kw("unless") ~ refer(expr) ~ sym(";").* ~ blockStatementsUntil(kw("else") / kw("end")) ~
+      sym(";").* ~
+      (kw("else") ~ sym(";").* ~ blockStatementsUntil(kw("end"))).? ~
+      sym(";").* ~ kw("end")
+    ).map {
+      case _ ~ condition ~ _ ~ thenBody ~ _ ~ elseBodyOpt ~ _ ~ _ =>
+        val elseBody = elseBodyOpt.map { case _ ~ _ ~ body => body }.getOrElse(Nil)
+        UnlessExpr(condition, thenBody, elseBody)
     }
 
   private lazy val program: P[Program] =

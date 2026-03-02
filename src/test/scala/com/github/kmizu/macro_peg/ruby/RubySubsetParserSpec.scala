@@ -77,5 +77,40 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       val parsed = RubySubsetParser.parse(input)
       assert(parsed.isLeft)
     }
+
+    it("parses module with if/unless and symbols") {
+      val input = "module M; if flag; :ok; else; :ng; end; unless done; x = :wait; else; x = :done; end; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ModuleDef(
+            "M",
+            List(
+              IfExpr(
+                LocalVar("flag"),
+                List(ExprStmt(SymbolLiteral("ok", UnknownSpan), UnknownSpan)),
+                List(ExprStmt(SymbolLiteral("ng", UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              ),
+              UnlessExpr(
+                LocalVar("done"),
+                List(Assign("x", SymbolLiteral("wait", UnknownSpan), UnknownSpan)),
+                List(Assign("x", SymbolLiteral("done", UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              )
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("supports RubyFullParser entrypoint") {
+      val input = "x = :\"hello\""
+      val parsed = RubyFullParser.parse(input)
+      assert(parsed == Right(Program(List(Assign("x", SymbolLiteral("hello", UnknownSpan), UnknownSpan)), UnknownSpan)))
+    }
   }
 }
