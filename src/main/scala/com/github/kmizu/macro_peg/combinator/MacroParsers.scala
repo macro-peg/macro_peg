@@ -45,6 +45,8 @@ object MacroParsers {
     def |[U >: T](b: MacroParser[U]): MacroParser[U] = Alternation(this, b)
     def /[U >: T](b: MacroParser[U]): MacroParser[U] = this | b
     def ~[U](b: MacroParser[U]): MacroParser[T ~ U] = Sequence(this, b)
+    def <~[U](b: MacroParser[U]): MacroParser[T] = (this ~ b).map(_._1)
+    def ~>[U](b: MacroParser[U]): MacroParser[U] = (this ~ b).map(_._2)
     def ? : MacroParser[Option[T]] = OptionParser(this)
     def * : MacroParser[List[T]] = RepeatParser(this)
     def + : MacroParser[List[T]] = Repeat1Parser(this)
@@ -52,6 +54,8 @@ object MacroParsers {
     def and: MacroParser[Any] = AndParser(this)
     def evalCC[U](cc: MacroParser[T] => MacroParser[U]): MacroParser[U] = EvalCC(this, cc)
     def map[U](function: T => U): MacroParser[U] = MappingParser(this, function)
+    def as[U](value: => U): MacroParser[U] = map(_ => value)
+    def void: MacroParser[Unit] = as(())
     def display: MacroParser[T] = new MacroParser[T] {
       override def apply(input: Input): ParseResult[T] = {
         println("input: " + input)
@@ -80,6 +84,15 @@ object MacroParsers {
       }
     }
   }
+
+  def success[A](value: A): MacroParser[A] =
+    StringParser("").map(_ => value)
+
+  def sepBy1[A, B](elem: MacroParser[A], sep: MacroParser[B]): MacroParser[List[A]] =
+    (elem ~ (sep ~ elem).*).map { case head ~ tail => head :: tail.map(_._2) }
+
+  def sepBy0[A, B](elem: MacroParser[A], sep: MacroParser[B]): MacroParser[List[A]] =
+    sepBy1(elem, sep) / success(Nil)
 
   type P[+T] = MacroParser[T]
   def any: AnyParser.type = AnyParser

@@ -33,5 +33,24 @@ class MacroParsersAdvancedSpec extends AnyFunSpec with Diagrams {
       val rendered = formatFailure("ax", failure)
       assert(rendered.contains("1:2"))
     }
+
+    it("supports <~ and ~> convenience operators") {
+      val parser = "(".s ~> "abc".s <~ ")".s
+      assert(parser("(abc)") == ParseSuccess("abc", ""))
+      assert(parser("(ab)").isInstanceOf[ParseFailure])
+    }
+
+    it("supports success and sepBy helpers") {
+      val parser = sepBy0(range('0' to '9').+.map(_.mkString), ",".s)
+      assert(parser("1,22,333") == ParseSuccess(List("1", "22", "333"), ""))
+      assert(parser("") == ParseSuccess(Nil, ""))
+      (success(42) ~ "x".s)("x") match {
+        case ParseSuccess(pair, "") =>
+          assert(pair._1 == 42)
+          assert(pair._2 == "x")
+        case other =>
+          fail(s"unexpected parse result: $other")
+      }
+    }
   }
 }

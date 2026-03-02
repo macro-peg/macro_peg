@@ -49,6 +49,7 @@ CharacterClass<- '[' '^'? (!']' .)+ ']'
 - Parser generator backend (`codegen.ParserGenerator`) for first-order grammars, with interpreter-backed fallback for higher-order grammars
 - Combinator ergonomics: `label`, `cut`, `recover`, `trace`, and formatted failures
 - Debug expressions for inspecting matches
+- Experimental Ruby prototype (`ruby.RubySubsetParser`) with AST nodes (`ruby.RubyAst`)
 
 ## Getting Started
 
@@ -102,6 +103,14 @@ For generated parser source code from a first-order grammar:
 import com.github.kmizu.macro_peg.codegen.ParserGenerator
 
 val source = ParserGenerator.generateFromSource("""S = "a" "b";""")
+```
+
+For a Ruby-oriented AST parsing prototype:
+
+```scala
+import com.github.kmizu.macro_peg.ruby.RubySubsetParser
+
+val astEither = RubySubsetParser.parse("""class User; def greet(name); "hi"; end; end""")
 ```
 
 ## Release Note
