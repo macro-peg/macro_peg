@@ -98,6 +98,32 @@ object RubySubsetParser {
       case _ ~ chars ~ _ => StringLiteral(chars.mkString)
     })
 
+  private lazy val escapedSingleQuotedChar: P[String] =
+    ("\\".s ~ any).map {
+      case _ ~ "'" => "'"
+      case _ ~ "\\" => "\\"
+      case _ ~ c => s"\\$c"
+    }
+
+  private lazy val plainSingleQuotedChar: P[String] =
+    (!"'".s ~ any).map(_._2)
+
+  private lazy val singleQuotedStringLiteral: P[Expr] =
+    token(("'".s ~ (escapedSingleQuotedChar / plainSingleQuotedChar).* ~ "'".s).map {
+      case _ ~ chars ~ _ => StringLiteral(chars.mkString)
+    })
+
+  private def percentStringLiteral(open: String, close: String): P[Expr] =
+    token((("%q".s / "%".s) ~ open.s ~ (!close.s ~ any).* ~ close.s).map {
+      case _ ~ _ ~ chars ~ _ => StringLiteral(chars.map(_._2).mkString)
+    })
+
+  private lazy val percentQuotedStringLiteral: P[Expr] =
+    percentStringLiteral("{", "}") /
+      percentStringLiteral("(", ")") /
+      percentStringLiteral("[", "]") /
+      percentStringLiteral("<", ">")
+
   private lazy val symbolLiteral: P[Expr] =
     (
       (sym(":") ~ token(identifierRaw)).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
@@ -174,6 +200,8 @@ object RubySubsetParser {
   private lazy val primaryNoCall: P[Expr] =
     integerLiteral /
       stringLiteral /
+      singleQuotedStringLiteral /
+      percentQuotedStringLiteral /
       symbolLiteral /
       boolLiteral /
       nilLiteral /
@@ -225,13 +253,22 @@ object RubySubsetParser {
         (receiver: Expr) => Call(Some(receiver), name, args)
     }
 
+  private lazy val indexSuffix: P[Expr => Expr] =
+    (sym("[") ~ sepBy0(refer(expr), sym(",")) ~ sym("]")).map {
+      case _ ~ args ~ _ =>
+        (receiver: Expr) => Call(Some(receiver), "[]", args)
+    }
+
+  private lazy val callSuffix: P[Expr => Expr] =
+    methodSuffix / indexSuffix
+
   private lazy val postfixExpr: P[Expr] =
-    ((functionCall / primaryNoCall) ~ methodSuffix.*).map {
+    ((functionCall / primaryNoCall) ~ callSuffix.*).map {
       case base ~ suffixes => suffixes.foldLeft(base)((current, suffix) => suffix(current))
     }
 
   private lazy val chainedCallExpr: P[Expr] =
-    ((functionCall / primaryNoCall) ~ methodSuffix.+).map {
+    ((functionCall / primaryNoCall) ~ callSuffix.+).map {
       case base ~ suffixes => suffixes.foldLeft(base)((current, suffix) => suffix(current))
     }
 
@@ -290,9 +327,9 @@ object RubySubsetParser {
     }
 
   private lazy val classStmt: P[Statement] =
-    (kw("class") ~ constPathSegments ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
-      case _ ~ name ~ _ ~ body ~ _ ~ _ =>
-        ClassDef(name.mkString("::"), body)
+    (kw("class") ~ constPathSegments ~ (sym("<") ~ refer(expr)).?.map(_.map(_._2)) ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
+      case _ ~ name ~ superClass ~ _ ~ body ~ _ ~ _ =>
+        ClassDef(name.mkString("::"), body, UnknownSpan, superClass)
     }
 
   private lazy val moduleStmt: P[Statement] =

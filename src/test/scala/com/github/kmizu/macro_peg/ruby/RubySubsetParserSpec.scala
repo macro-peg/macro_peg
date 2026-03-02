@@ -461,5 +461,65 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses single-quoted string literals") {
+      val input = "msg = 'ok'"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign("msg", StringLiteral("ok"), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses percent-quoted string literals") {
+      val input = "assert_equal %q{ok}, %{ng}"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(None, "assert_equal", List(StringLiteral("ok"), StringLiteral("ng")), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses bracket index access expression") {
+      val input = "x = ENV[\"HOME\"]"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "x",
+            Call(Some(ConstRef(List("ENV"), UnknownSpan)), "[]", List(StringLiteral("HOME")), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses class definition with superclass") {
+      val input = "class Child < Parent; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ClassDef(
+            "Child",
+            Nil,
+            UnknownSpan,
+            Some(ConstRef(List("Parent"), UnknownSpan))
+          )
+        ), UnknownSpan)
+      )
+    }
   }
 }

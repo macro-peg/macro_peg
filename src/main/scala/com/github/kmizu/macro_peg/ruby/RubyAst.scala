@@ -17,7 +17,7 @@ object RubyAst {
   case class Assign(name: String, value: Expr, span: Span = UnknownSpan) extends Statement
   case class Return(value: Option[Expr], span: Span = UnknownSpan) extends Statement
   case class Def(name: String, params: List[String], body: List[Statement], span: Span = UnknownSpan) extends Statement
-  case class ClassDef(name: String, body: List[Statement], span: Span = UnknownSpan) extends Statement
+  case class ClassDef(name: String, body: List[Statement], span: Span = UnknownSpan, superClass: Option[Expr] = None) extends Statement
   case class ModuleDef(name: String, body: List[Statement], span: Span = UnknownSpan) extends Statement
 
   case class IntLiteral(value: Long, span: Span = UnknownSpan) extends Expr
