@@ -204,5 +204,66 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses receiver command-style calls without parentheses") {
+      val input = "logger.info 1, 2"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(Some(LocalVar("logger")), "info", List(IntLiteral(1), IntLiteral(2)), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses do-end block attached to call") {
+      val input = "items.each do |x| puts x; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            CallWithBlock(
+              Call(Some(LocalVar("items")), "each", Nil, UnknownSpan),
+              Block(
+                List("x"),
+                List(ExprStmt(Call(None, "puts", List(LocalVar("x")), UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses brace block attached to call") {
+      val input = "add(1, 2) { |x| puts x }"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            CallWithBlock(
+              Call(None, "add", List(IntLiteral(1), IntLiteral(2)), UnknownSpan),
+              Block(
+                List("x"),
+                List(ExprStmt(Call(None, "puts", List(LocalVar("x")), UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
   }
 }

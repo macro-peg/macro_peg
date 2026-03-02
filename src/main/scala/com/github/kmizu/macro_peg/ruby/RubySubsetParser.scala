@@ -44,6 +44,7 @@ object RubySubsetParser {
       "if".s /
       "elsif".s /
       "else".s /
+      "do".s /
       "unless".s /
       "end".s /
       "true".s /
@@ -128,9 +129,27 @@ object RubySubsetParser {
   private lazy val functionCall: P[Expr] =
     (identifier ~ callArgs).map { case name ~ args => Call(None, name, args) }
 
+  private lazy val receiverForCommand: P[Expr] =
+    variable
+
+  private lazy val receiverCommandHead: P[Expr ~ String] =
+    (receiverForCommand <~ sym(".")) ~ identifierNoSpace
+
   private lazy val commandCall: P[Expr] =
     ((identifierNoSpace <~ spacing1) ~ commandArgs).map {
       case name ~ args => Call(None, name, args)
+    }
+
+  private lazy val receiverCommandCall: P[Expr] =
+    ((receiverCommandHead <~ spacing1) ~ commandArgs).map {
+      case receiverAndMethod ~ args =>
+        val receiver ~ methodName = receiverAndMethod
+        Call(Some(receiver), methodName, args)
+    }
+
+  private lazy val receiverCommandNoArgs: P[Expr] =
+    receiverCommandHead.map {
+      case receiver ~ methodName => Call(Some(receiver), methodName, Nil)
     }
 
   private lazy val primaryNoCall: P[Expr] =
@@ -143,6 +162,33 @@ object RubySubsetParser {
       hashLiteral /
       variable /
       parenExpr
+
+  private lazy val blockParams: P[List[String]] =
+    sym("|") ~> sepBy0(identifier, sym(",")) <~ sym("|")
+
+  private lazy val doBlock: P[Block] =
+    (kw("do") ~ blockParams.? ~ sym(";").* ~ blockStatementsUntil(kw("end")) ~ sym(";").* ~ kw("end")).map {
+      case _ ~ maybeParams ~ _ ~ body ~ _ ~ _ => Block(maybeParams.getOrElse(Nil), body)
+    }
+
+  private lazy val braceBlock: P[Block] =
+    (sym("{") ~ blockParams.? ~ sym(";").* ~ blockStatementsUntil(sym("}")) ~ sym(";").* ~ sym("}")).map {
+      case _ ~ maybeParams ~ _ ~ body ~ _ ~ _ => Block(maybeParams.getOrElse(Nil), body)
+    }
+
+  private lazy val blockLiteral: P[Block] =
+    doBlock / braceBlock
+
+  private lazy val blockCallExpr: P[Expr] =
+    receiverCommandNoArgs /
+      receiverCommandCall /
+      functionCall /
+      commandCall
+
+  private lazy val blockCallStmt: P[Statement] =
+    ((blockCallExpr <~ spacing) ~ blockLiteral).map {
+      case call ~ block => ExprStmt(CallWithBlock(call, block))
+    }
 
   private lazy val methodSuffix: P[Expr => Expr] =
     (sym(".") ~ identifier ~ callArgs).map {
@@ -176,7 +222,7 @@ object RubySubsetParser {
     sym("(") ~> sepBy0(identifier, sym(",")) <~ sym(")")
 
   private lazy val simpleStatement: P[Statement] =
-    ((assignStmt / commandCall.map(ExprStmt(_)) / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
+    ((assignStmt / blockCallStmt / receiverCommandCall.map(ExprStmt(_)) / commandCall.map(ExprStmt(_)) / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
       case stmt ~ Some(modifier) => modifier(stmt)
       case stmt ~ None => stmt
     }
@@ -190,10 +236,10 @@ object RubySubsetParser {
       simpleStatement
 
   private lazy val topLevelStatements: P[List[Statement]] =
-    sepBy0(statement, sym(";"))
+    sepBy0(refer(statement), sym(";"))
 
   private def blockStatementsUntil(stop: P[Any]): P[List[Statement]] =
-    (stop.and ~> success(Nil)) / sepBy1(statement, sym(";"))
+    (stop.and ~> success(Nil)) / sepBy1(refer(statement), sym(";"))
 
   private lazy val blockStatements: P[List[Statement]] =
     blockStatementsUntil(kw("end"))

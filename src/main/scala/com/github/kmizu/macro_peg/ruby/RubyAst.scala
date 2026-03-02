@@ -28,6 +28,8 @@ object RubyAst {
   case class ArrayLiteral(elements: List[Expr], span: Span = UnknownSpan) extends Expr
   case class HashLiteral(entries: List[(Expr, Expr)], span: Span = UnknownSpan) extends Expr
   case class Call(receiver: Option[Expr], methodName: String, args: List[Expr], span: Span = UnknownSpan) extends Expr
+  case class Block(params: List[String], body: List[Statement], span: Span = UnknownSpan) extends Node
+  case class CallWithBlock(call: Expr, block: Block, span: Span = UnknownSpan) extends Expr
   case class BinaryOp(lhs: Expr, op: String, rhs: Expr, span: Span = UnknownSpan) extends Expr
   case class IfExpr(condition: Expr, thenBody: List[Statement], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr
   case class UnlessExpr(condition: Expr, thenBody: List[Statement], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr
