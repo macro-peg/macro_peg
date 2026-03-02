@@ -184,18 +184,31 @@ object ParserGenerator {
        |
        |object $objectName {
        |  private val grammarSource: String = $sourceLiteral
+       |  private val interpreterCache = scala.collection.mutable.Map.empty[EvaluationStrategy, Either[Diagnostic, Interpreter]]
        |
-       |  lazy val interpreterEither: Either[Diagnostic, Interpreter] =
-       |    Interpreter.fromSourceEither(grammarSource)
+       |  private def interpreterEither(strategy: EvaluationStrategy): Either[Diagnostic, Interpreter] =
+       |    interpreterCache.getOrElseUpdate(strategy, Interpreter.fromSourceEither(grammarSource, strategy))
        |
-       |  def evaluate(input: String, start: Symbol = Symbol("$start")): Either[Diagnostic, EvaluationResult.Success] =
-       |    interpreterEither.flatMap(_.evaluateEither(input, start))
+       |  def evaluate(
+       |    input: String,
+       |    start: Symbol = Symbol("$start"),
+       |    strategy: EvaluationStrategy = EvaluationStrategy.CallByName
+       |  ): Either[Diagnostic, EvaluationResult.Success] =
+       |    interpreterEither(strategy).flatMap(_.evaluateEither(input, start))
        |
-       |  def parse(input: String, start: Symbol = Symbol("$start")): Either[Diagnostic, EvaluationResult.Success] =
-       |    evaluate(input, start)
+       |  def parse(
+       |    input: String,
+       |    start: Symbol = Symbol("$start"),
+       |    strategy: EvaluationStrategy = EvaluationStrategy.CallByName
+       |  ): Either[Diagnostic, EvaluationResult.Success] =
+       |    evaluate(input, start, strategy)
        |
-       |  def parseAll(input: String, start: Symbol = Symbol("$start")): Either[String, String] =
-       |    evaluate(input, start).map(_.remained).left.map(_.format)
+       |  def parseAll(
+       |    input: String,
+       |    start: Symbol = Symbol("$start"),
+       |    strategy: EvaluationStrategy = EvaluationStrategy.CallByName
+       |  ): Either[String, String] =
+       |    evaluate(input, start, strategy).map(_.remained).left.map(_.format)
        |}
        |""".stripMargin
   }

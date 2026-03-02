@@ -9,10 +9,18 @@ object InlineMacroParsers {
     final def accepts(input: String): Boolean = evaluate(input).isSuccess
   }
 
-  inline def mpeg(inline grammar: String, inline start: String = "S"): CompiledParser =
-    ${ mpegImpl('grammar, 'start) }
+  inline def mpeg(
+    inline grammar: String,
+    inline start: String = "S",
+    strategy: EvaluationStrategy = EvaluationStrategy.CallByName
+  ): CompiledParser =
+    ${ mpegImpl('grammar, 'start, 'strategy) }
 
-  private def mpegImpl(grammarExpr: Expr[String], startExpr: Expr[String])(using Quotes): Expr[CompiledParser] = {
+  private def mpegImpl(
+    grammarExpr: Expr[String],
+    startExpr: Expr[String],
+    strategyExpr: Expr[EvaluationStrategy]
+  )(using Quotes): Expr[CompiledParser] = {
     val grammar = grammarExpr.valueOrAbort
     val start = startExpr.valueOrAbort
     validateGrammar(grammar, start)
@@ -20,7 +28,7 @@ object InlineMacroParsers {
     val startLiteral = Expr(start)
 
     '{
-      val interpreter = Interpreter.fromSource($grammarLiteral)
+      val interpreter = Interpreter.fromSource($grammarLiteral, $strategyExpr)
       val startSymbol = Symbol($startLiteral)
       new CompiledParser {
         override def evaluate(input: String): EvaluationResult =

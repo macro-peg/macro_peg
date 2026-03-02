@@ -42,7 +42,7 @@ CharacterClass<- '[' '^'? (!']' .)+ ']'
 - Type annotations for macro parameters
 - Multiple evaluation strategies (call by name, call by value sequential/parallel)
 - Parser combinator library `MacroParsers`
-- Scala 3 inline macro API `InlineMacroParsers.mpeg` (compile-time grammar validation)
+- Scala 3 inline macro API `InlineMacroParsers.mpeg` (compile-time grammar validation, strategy selection)
 - Rich diagnostics via `Diagnostic` (`parse`, `well-formedness`, `type-check`, `evaluation`, `generation`)
 - Static grammar validation (`GrammarValidator`) for undefined references, nullable repetition, and left recursion
 - Packrat-style memoization in evaluator (`evaluateWithDiagnostics`)
@@ -84,9 +84,16 @@ For compile-time checked grammar (Scala 3 inline macro):
 
 ```scala
 import com.github.kmizu.macro_peg.InlineMacroParsers._
+import com.github.kmizu.macro_peg.EvaluationStrategy
 
 val parser = mpeg("""S = "ab" !.;""")
 assert(parser.accepts("ab"))
+
+// Useful for dynamic delimiter capture patterns (scannerless, no external lexer state).
+val parser2 = mpeg(
+  """S = F("<<", [A-Z]+, "\n") !.; F(Open, Delim, NL) = Delim;""",
+  strategy = EvaluationStrategy.CallByValueSeq
+)
 ```
 
 For generated parser source code from a first-order grammar:

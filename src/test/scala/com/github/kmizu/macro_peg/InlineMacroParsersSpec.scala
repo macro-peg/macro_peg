@@ -42,5 +42,31 @@ class InlineMacroParsersSpec extends AnyFunSpec with Diagrams {
           |""".stripMargin
       )
     }
+
+    it("supports strategy selection for dynamic delimiter capture") {
+      val parser = mpeg(
+        """|
+           |S = Heredoc("<<", Ident) !.;
+           |Heredoc(Open, Delim) =
+           |  ( !(Delim (NL / !.)) (!NL .)* NL )*
+           |  Delim (NL / "");
+           |Ident = [A-Z] [A-Z0-9_]*;
+           |NL = "\n";
+           |""".stripMargin,
+        strategy = EvaluationStrategy.CallByValueSeq
+      )
+      val valid =
+        """<<EOS
+          |body
+          |EOS
+          |""".stripMargin
+      val invalid =
+        """<<EOS
+          |body
+          |EOT
+          |""".stripMargin
+      assert(parser.accepts(valid))
+      assert(!parser.accepts(invalid))
+    }
   }
 }

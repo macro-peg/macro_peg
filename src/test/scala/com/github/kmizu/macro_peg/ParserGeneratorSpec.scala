@@ -23,6 +23,7 @@ class ParserGeneratorSpec extends AnyFunSpec with Diagrams {
       val code = generated.toOption.get
       assert(code.contains("Interpreter.fromSourceEither"))
       assert(code.contains("def evaluate"))
+      assert(code.contains("strategy: EvaluationStrategy"))
       assert(code.contains("F(x) = x;"))
     }
 
