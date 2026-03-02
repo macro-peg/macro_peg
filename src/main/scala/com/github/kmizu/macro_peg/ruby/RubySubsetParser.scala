@@ -153,12 +153,6 @@ object RubySubsetParser {
         Call(Some(receiver), methodName, args)
     }
 
-  private lazy val receiverParenCall: P[Expr] =
-    ((receiverForCommand <~ sym(".")) ~ identifier ~ callArgs).map {
-      case receiver ~ methodName ~ args =>
-        Call(Some(receiver), methodName, args)
-    }
-
   private lazy val receiverCommandNoArgs: P[Expr] =
     receiverCommandHead.map {
       case receiver ~ methodName => Call(Some(receiver), methodName, Nil)
@@ -198,7 +192,7 @@ object RubySubsetParser {
     sym(";").void / lineBreak.+.void
 
   private lazy val blockCallExpr: P[Expr] =
-    receiverParenCall /
+    chainedCallExpr /
       receiverCommandNoArgs /
       receiverCommandCall /
       functionCall /
@@ -210,13 +204,19 @@ object RubySubsetParser {
     }
 
   private lazy val methodSuffix: P[Expr => Expr] =
-    (sym(".") ~ identifier ~ callArgs).map {
-      case _ ~ name ~ args =>
+    (sym(".") ~ identifier ~ callArgs.?).map {
+      case _ ~ name ~ argsOpt =>
+        val args = argsOpt.getOrElse(Nil)
         (receiver: Expr) => Call(Some(receiver), name, args)
     }
 
   private lazy val postfixExpr: P[Expr] =
     ((functionCall / primaryNoCall) ~ methodSuffix.*).map {
+      case base ~ suffixes => suffixes.foldLeft(base)((current, suffix) => suffix(current))
+    }
+
+  private lazy val chainedCallExpr: P[Expr] =
+    ((functionCall / primaryNoCall) ~ methodSuffix.+).map {
       case base ~ suffixes => suffixes.foldLeft(base)((current, suffix) => suffix(current))
     }
 

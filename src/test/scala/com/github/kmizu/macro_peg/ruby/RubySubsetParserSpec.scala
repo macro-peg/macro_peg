@@ -328,5 +328,61 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses chained dot calls with no-arg methods in expressions") {
+      val input = "x = user.profile.name"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "x",
+            Call(
+              Some(
+                Call(
+                  Some(LocalVar("user")),
+                  "profile",
+                  Nil,
+                  UnknownSpan
+                )
+              ),
+              "name",
+              Nil,
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses block attached to chained call expression") {
+      val input = "foo.bar(1).baz do |x| puts x; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            CallWithBlock(
+              Call(
+                Some(Call(Some(LocalVar("foo")), "bar", List(IntLiteral(1)), UnknownSpan)),
+                "baz",
+                Nil,
+                UnknownSpan
+              ),
+              Block(
+                List("x"),
+                List(ExprStmt(Call(None, "puts", List(LocalVar("x")), UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
   }
 }

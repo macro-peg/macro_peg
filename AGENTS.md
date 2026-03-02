@@ -56,3 +56,4 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - あわせて `items.each do ... end` が落ちる原因（block直前の空白未吸収）も修正して、`blockCallExpr <~ spacing` を入れた。
 - `RubySubsetParserSpec` と `sbt test` 全体を通して、ハング解消と既存回帰がないことを確認。
 - さらに「最終ゴールは FullSet」と再確認。方針をぶらさないため、今回の追加も FullSet移行に直結する土台（改行区切り文対応・`receiver.method(args)` + block対応）に限定して進めた。
+- 追加で dot-call を一般化して、`user.profile.name` みたいな no-arg chain と `foo.bar(1).baz do ... end` の chain + block を通せるように拡張。FullSetで必須になる call chain 表現力を前倒しで確保した。
