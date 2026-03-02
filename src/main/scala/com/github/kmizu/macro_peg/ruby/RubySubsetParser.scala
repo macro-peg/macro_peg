@@ -53,6 +53,8 @@ object RubySubsetParser {
       "if".s /
       "elsif".s /
       "else".s /
+      "and".s /
+      "or".s /
       "do".s /
       "rescue".s /
       "ensure".s /
@@ -71,6 +73,21 @@ object RubySubsetParser {
 
   private lazy val identifier: P[String] =
     token(identifierNoSpace)
+
+  private lazy val methodSuffixChar: P[String] =
+    "?".s / "!".s / "=".s
+
+  private lazy val methodIdentifierRaw: P[String] =
+    (identifierRaw ~ methodSuffixChar.?).map {
+      case base ~ Some(suffix) => base + suffix
+      case base ~ None => base
+    }
+
+  private lazy val methodIdentifierNoSpace: P[String] =
+    (!reservedWord ~ methodIdentifierRaw).map(_._2)
+
+  private lazy val methodIdentifier: P[String] =
+    token(methodIdentifierNoSpace)
 
   private lazy val constStart: P[String] =
     range('A' to 'Z')
@@ -228,16 +245,16 @@ object RubySubsetParser {
     blockPassArgExpr / refer(expr)
 
   private lazy val functionCall: P[Expr] =
-    (identifier ~ callArgs).map { case name ~ args => Call(None, name, args) }
+    (methodIdentifier ~ callArgs).map { case name ~ args => Call(None, name, args) }
 
   private lazy val receiverForCommand: P[Expr] =
     constRef / selfExpr / variable
 
   private lazy val receiverCommandHead: P[Expr ~ String] =
-    (receiverForCommand <~ sym(".")) ~ identifierNoSpace
+    (receiverForCommand <~ sym(".")) ~ methodIdentifierNoSpace
 
   private lazy val commandCall: P[Expr] =
-    ((identifierNoSpace <~ spacing1) ~ commandArgs).map {
+    ((methodIdentifierNoSpace <~ spacing1) ~ commandArgs).map {
       case name ~ args => Call(None, name, args)
     }
 
@@ -307,7 +324,7 @@ object RubySubsetParser {
     }
 
   private lazy val methodSuffix: P[Expr => Expr] =
-    (sym(".") ~ identifier ~ callArgs.?).map {
+    (sym(".") ~ methodIdentifier ~ callArgs.?).map {
       case _ ~ name ~ argsOpt =>
         val args = argsOpt.getOrElse(Nil)
         (receiver: Expr) => Call(Some(receiver), name, args)
@@ -340,17 +357,41 @@ object RubySubsetParser {
   private def infix(op: String): P[(Expr, Expr) => Expr] =
     sym(op).map(_ => (lhs: Expr, rhs: Expr) => BinaryOp(lhs, op, rhs))
 
+  private def infixKeyword(op: String): P[(Expr, Expr) => Expr] =
+    kw(op).map(_ => (lhs: Expr, rhs: Expr) => BinaryOp(lhs, op, rhs))
+
+  private lazy val unaryExpr: P[Expr] =
+    (sym("!") ~ refer(unaryExpr)).map {
+      case _ ~ target => UnaryOp("!", target)
+    } /
+      postfixExpr
+
   private lazy val mulDivExpr: P[Expr] =
-    chainl(postfixExpr)(infix("*") / infix("/"))
+    chainl(unaryExpr)(infix("*") / infix("/"))
 
   private lazy val addSubExpr: P[Expr] =
     chainl(mulDivExpr)(infix("+") / infix("-"))
 
-  private lazy val expr: P[Expr] =
-    (addSubExpr ~ ((sym("..") / sym("...")) ~ addSubExpr).?).map {
+  private lazy val relationalExpr: P[Expr] =
+    chainl(addSubExpr)(infix("<=") / infix(">=") / infix("<") / infix(">"))
+
+  private lazy val equalityExpr: P[Expr] =
+    chainl(relationalExpr)(infix("==") / infix("!="))
+
+  private lazy val rangeExpr: P[Expr] =
+    (equalityExpr ~ ((sym("..") / sym("...")) ~ equalityExpr).?).map {
       case start ~ Some(op ~ end) => RangeExpr(start, end, exclusive = op == "...")
       case start ~ None => start
     }
+
+  private lazy val andExpr: P[Expr] =
+    chainl(rangeExpr)(infix("&&") / infixKeyword("and"))
+
+  private lazy val orExpr: P[Expr] =
+    chainl(andExpr)(infix("||") / infixKeyword("or"))
+
+  private lazy val expr: P[Expr] =
+    orExpr
 
   private lazy val assignableName: P[String] =
     identifier / instanceVarName / classVarName / globalVarName
@@ -440,7 +481,7 @@ object RubySubsetParser {
     }
 
   private lazy val defStmt: P[Statement] =
-    (kw("def") ~ identifier ~ params.? ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
+    (kw("def") ~ methodIdentifier ~ params.? ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
       case _ ~ name ~ maybeParams ~ _ ~ body ~ _ ~ _ =>
         Def(name, maybeParams.getOrElse(Nil), body)
     }

@@ -42,6 +42,7 @@ object RubyAst {
   case class Block(params: List[String], body: List[Statement], span: Span = UnknownSpan) extends Node
   case class CallWithBlock(call: Expr, block: Block, span: Span = UnknownSpan) extends Expr
   case class RangeExpr(start: Expr, end: Expr, exclusive: Boolean, span: Span = UnknownSpan) extends Expr
+  case class UnaryOp(op: String, expr: Expr, span: Span = UnknownSpan) extends Expr
   case class BinaryOp(lhs: Expr, op: String, rhs: Expr, span: Span = UnknownSpan) extends Expr
   case class IfExpr(condition: Expr, thenBody: List[Statement], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr
   case class UnlessExpr(condition: Expr, thenBody: List[Statement], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr

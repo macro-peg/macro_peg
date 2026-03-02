@@ -709,5 +709,48 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses method names with punctuation and unary/binary operators") {
+      val input = "if !Dir.respond_to?(:mktmpdir) || force; ok! 1; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          IfExpr(
+            BinaryOp(
+              UnaryOp(
+                "!",
+                Call(
+                  Some(ConstRef(List("Dir"), UnknownSpan)),
+                  "respond_to?",
+                  List(SymbolLiteral("mktmpdir", UnknownSpan)),
+                  UnknownSpan
+                ),
+                UnknownSpan
+              ),
+              "||",
+              LocalVar("force", UnknownSpan),
+              UnknownSpan
+            ),
+            List(ExprStmt(Call(None, "ok!", List(IntLiteral(1)), UnknownSpan), UnknownSpan)),
+            Nil,
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses def name ending with question mark") {
+      val input = "def empty?; true; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Def("empty?", Nil, List(ExprStmt(BoolLiteral(true, UnknownSpan), UnknownSpan)), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
   }
 }
