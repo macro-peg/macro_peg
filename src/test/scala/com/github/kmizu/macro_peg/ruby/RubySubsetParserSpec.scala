@@ -752,5 +752,46 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses nested percent-q parentheses strings") {
+      val input = "x = %q( Object.const_defined?(:C) )"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign("x", StringLiteral(" Object.const_defined?(:C) "), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses regular expression literal in call arguments") {
+      val input = "assert_match /\\\\Aok\\\\z/, value"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(None, "assert_match", List(StringLiteral("\\\\Aok\\\\z"), LocalVar("value", UnknownSpan)), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses symbol literals with variable-like names") {
+      val input = "trace_var(:$a); trace_var(:@x); trace_var(:@@y)"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(Call(None, "trace_var", List(SymbolLiteral("$a", UnknownSpan)), UnknownSpan), UnknownSpan),
+          ExprStmt(Call(None, "trace_var", List(SymbolLiteral("@x", UnknownSpan)), UnknownSpan), UnknownSpan),
+          ExprStmt(Call(None, "trace_var", List(SymbolLiteral("@@y", UnknownSpan)), UnknownSpan), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
   }
 }

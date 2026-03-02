@@ -168,10 +168,18 @@ object RubySubsetParser {
       case _ ~ chars ~ _ => StringLiteral(chars.mkString)
     })
 
-  private def percentStringLiteral(open: String, close: String): P[Expr] =
-    token((("%q".s / "%".s) ~ open.s ~ (!close.s ~ any).* ~ close.s).map {
-      case _ ~ _ ~ chars ~ _ => StringLiteral(chars.map(_._2).mkString)
+  private def percentStringLiteral(open: String, close: String): P[Expr] = {
+    lazy val percentChunk: P[String] =
+      ((open.s ~ refer(percentChunk).* ~ close.s).map {
+        case openText ~ inner ~ closeText => openText + inner.mkString + closeText
+      }) /
+        ((!open.s ~ !close.s ~ any).map {
+          case _ ~ _ ~ char => char
+        })
+    token((("%q".s / "%".s) ~ open.s ~ percentChunk.* ~ close.s).map {
+      case _ ~ _ ~ chars ~ _ => StringLiteral(chars.mkString)
     })
+  }
 
   private lazy val percentQuotedStringLiteral: P[Expr] =
     percentStringLiteral("{", "}") /
@@ -179,9 +187,26 @@ object RubySubsetParser {
       percentStringLiteral("[", "]") /
       percentStringLiteral("<", ">")
 
+  private lazy val escapedRegexChar: P[String] =
+    ("\\".s ~ any).map { case _ ~ c => s"\\$c" }
+
+  private lazy val plainRegexChar: P[String] =
+    (!"/".s ~ any).map(_._2)
+
+  private lazy val regexLiteral: P[Expr] =
+    token(("/".s ~ (escapedRegexChar / plainRegexChar).* ~ "/".s).map {
+      case _ ~ chars ~ _ => StringLiteral(chars.mkString)
+    })
+
   private lazy val symbolLiteral: P[Expr] =
     (
       (sym(":") ~ token(identifierRaw)).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
+    ) / (
+      (sym(":") ~ classVarName).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
+    ) / (
+      (sym(":") ~ instanceVarName).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
+    ) / (
+      (sym(":") ~ globalVarName).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
     ) / (
       (sym(":") ~ token(("\"".s ~ (escapedChar / plainStringChar).* ~ "\"".s).map {
         case _ ~ chars ~ _ => chars.mkString
@@ -275,6 +300,7 @@ object RubySubsetParser {
       stringLiteral /
       singleQuotedStringLiteral /
       percentQuotedStringLiteral /
+      regexLiteral /
       symbolLiteral /
       boolLiteral /
       nilLiteral /
