@@ -595,5 +595,119 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses for-in loop with range and compound assignment") {
+      val input =
+        """sum = 0
+          |for x in (1..5)
+          |  sum += x
+          |end""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign("sum", IntLiteral(0), UnknownSpan),
+          ForIn(
+            "x",
+            RangeExpr(IntLiteral(1), IntLiteral(5), exclusive = false, UnknownSpan),
+            List(
+              Assign("sum", BinaryOp(LocalVar("sum", UnknownSpan), "+", LocalVar("x", UnknownSpan), UnknownSpan), UnknownSpan)
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses begin-rescue with retry") {
+      val input =
+        """begin
+          |  require 'tmpdir'
+          |rescue LoadError
+          |  retry
+          |end""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          BeginRescue(
+            List(ExprStmt(Call(None, "require", List(StringLiteral("tmpdir")), UnknownSpan), UnknownSpan)),
+            List(
+              RescueClause(
+                List(ConstRef(List("LoadError"), UnknownSpan)),
+                None,
+                List(Retry(UnknownSpan)),
+                UnknownSpan
+              )
+            ),
+            Nil,
+            Nil,
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses no-arg bare call with block chained by method calls") {
+      val input = "lambda{ 1 }.call.call"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(
+              Some(
+                Call(
+                  Some(
+                    CallWithBlock(
+                      LocalVar("lambda", UnknownSpan),
+                      Block(Nil, List(ExprStmt(IntLiteral(1), UnknownSpan)), UnknownSpan),
+                      UnknownSpan
+                    )
+                  ),
+                  "call",
+                  Nil,
+                  UnknownSpan
+                )
+              ),
+              "call",
+              Nil,
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses block-pass parameter and argument") {
+      val input = "def each(&block); [1, 2].each(&block); end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Def(
+            "each",
+            List("&block"),
+            List(
+              ExprStmt(
+                Call(
+                  Some(ArrayLiteral(List(IntLiteral(1), IntLiteral(2)), UnknownSpan)),
+                  "each",
+                  List(LocalVar("&block", UnknownSpan)),
+                  UnknownSpan
+                ),
+                UnknownSpan
+              )
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
   }
 }

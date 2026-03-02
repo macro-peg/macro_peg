@@ -48,12 +48,15 @@ object RubySubsetParser {
       "def".s /
       "class".s /
       "module".s /
+      "for".s /
+      "in".s /
       "if".s /
       "elsif".s /
       "else".s /
       "do".s /
       "rescue".s /
       "ensure".s /
+      "retry".s /
       "unless".s /
       "end".s /
       "return".s /
@@ -213,10 +216,16 @@ object RubySubsetParser {
     }
 
   private lazy val callArgs: P[List[Expr]] =
-    sym("(") ~> sepBy0(refer(expr), sym(",")) <~ sym(")")
+    sym("(") ~> sepBy0(callArgExpr, sym(",")) <~ sym(")")
 
   private lazy val commandArgs: P[List[Expr]] =
-    sepBy1(refer(expr), sym(","))
+    sepBy1(callArgExpr, sym(","))
+
+  private lazy val blockPassArgExpr: P[Expr] =
+    (sym("&") ~ identifier).map { case _ ~ name => LocalVar(s"&$name") }
+
+  private lazy val callArgExpr: P[Expr] =
+    blockPassArgExpr / refer(expr)
 
   private lazy val functionCall: P[Expr] =
     (identifier ~ callArgs).map { case name ~ args => Call(None, name, args) }
@@ -259,8 +268,12 @@ object RubySubsetParser {
       variable /
       parenExpr
 
+  private lazy val formalParam: P[String] =
+    (sym("&") ~ identifier).map { case _ ~ name => s"&$name" } /
+      identifier
+
   private lazy val blockParams: P[List[String]] =
-    sym("|") ~> sepBy0(identifier, sym(",")) <~ sym("|")
+    sym("|") ~> sepBy0(formalParam, sym(",")) <~ sym("|")
 
   private lazy val doBlock: P[Block] =
     (kw("do") ~ blockParams.? ~ statementSep.* ~ blockStatementsUntil(kw("end")) ~ statementSep.* ~ kw("end")).map {
@@ -307,7 +320,12 @@ object RubySubsetParser {
     }
 
   private lazy val callSuffix: P[Expr => Expr] =
-    methodSuffix / indexSuffix
+    methodSuffix / indexSuffix / blockAttachSuffix
+
+  private lazy val blockAttachSuffix: P[Expr => Expr] =
+    refer(blockLiteral).map { block =>
+      (receiver: Expr) => CallWithBlock(receiver, block)
+    }
 
   private lazy val postfixExpr: P[Expr] =
     ((functionCall / primaryNoCall) ~ callSuffix.*).map {
@@ -329,10 +347,25 @@ object RubySubsetParser {
     chainl(mulDivExpr)(infix("+") / infix("-"))
 
   private lazy val expr: P[Expr] =
-    addSubExpr
+    (addSubExpr ~ ((sym("..") / sym("...")) ~ addSubExpr).?).map {
+      case start ~ Some(op ~ end) => RangeExpr(start, end, exclusive = op == "...")
+      case start ~ None => start
+    }
 
   private lazy val assignableName: P[String] =
     identifier / instanceVarName / classVarName / globalVarName
+
+  private def assignableAsExpr(name: String): Expr =
+    if(name.startsWith("@@")) ClassVar(name)
+    else if(name.startsWith("@")) InstanceVar(name)
+    else if(name.startsWith("$")) GlobalVar(name)
+    else LocalVar(name)
+
+  private lazy val compoundAssignStmt: P[Statement] =
+    (assignableName ~ sym("+=") ~ refer(expr)).map {
+      case name ~ _ ~ value =>
+        Assign(name, BinaryOp(assignableAsExpr(name), "+", value))
+    }
 
   private lazy val assignStmt: P[Statement] =
     (assignableName ~ sym("=") ~ refer(expr)).map {
@@ -344,17 +377,21 @@ object RubySubsetParser {
       case _ ~ value => Return(value)
     }
 
+  private lazy val retryStmt: P[Statement] =
+    kw("retry").map(_ => Retry())
+
   private lazy val params: P[List[String]] =
-    sym("(") ~> sepBy0(identifier, sym(",")) <~ sym(")")
+    sym("(") ~> sepBy0(formalParam, sym(",")) <~ sym(")")
 
   private lazy val simpleStatement: P[Statement] =
-    ((returnStmt / assignStmt / blockCallStmt / receiverCommandCall.map(ExprStmt(_)) / commandCall.map(ExprStmt(_)) / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
+    ((returnStmt / retryStmt / compoundAssignStmt / assignStmt / blockCallStmt / receiverCommandCall.map(ExprStmt(_)) / commandCall.map(ExprStmt(_)) / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
       case stmt ~ Some(modifier) => modifier(stmt)
       case stmt ~ None => stmt
     }
 
   private lazy val statement: P[Statement] =
     refer(beginStmt) /
+    refer(forStmt) /
     refer(defStmt) /
       refer(singletonClassStmt) /
       refer(classStmt) /
@@ -412,6 +449,12 @@ object RubySubsetParser {
     (kw("class") ~ sym("<<") ~ refer(expr) ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
       case _ ~ _ ~ receiver ~ _ ~ body ~ _ ~ _ =>
         SingletonClassDef(receiver, body)
+    }
+
+  private lazy val forStmt: P[Statement] =
+    (kw("for") ~ identifier ~ kw("in") ~ refer(expr) ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
+      case _ ~ name ~ _ ~ iterable ~ _ ~ body ~ _ ~ _ =>
+        ForIn(name, iterable, body)
     }
 
   private lazy val classStmt: P[Statement] =

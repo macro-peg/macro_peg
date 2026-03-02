@@ -18,6 +18,8 @@ object RubyAst {
   case class Return(value: Option[Expr], span: Span = UnknownSpan) extends Statement
   case class RescueClause(exceptionClasses: List[Expr], variable: Option[String], body: List[Statement], span: Span = UnknownSpan) extends Node
   case class BeginRescue(body: List[Statement], rescues: List[RescueClause], elseBody: List[Statement], ensureBody: List[Statement], span: Span = UnknownSpan) extends Statement
+  case class Retry(span: Span = UnknownSpan) extends Statement
+  case class ForIn(name: String, iterable: Expr, body: List[Statement], span: Span = UnknownSpan) extends Statement
   case class Def(name: String, params: List[String], body: List[Statement], span: Span = UnknownSpan) extends Statement
   case class ClassDef(name: String, body: List[Statement], span: Span = UnknownSpan, superClass: Option[Expr] = None) extends Statement
   case class SingletonClassDef(receiver: Expr, body: List[Statement], span: Span = UnknownSpan) extends Statement
@@ -39,6 +41,7 @@ object RubyAst {
   case class Call(receiver: Option[Expr], methodName: String, args: List[Expr], span: Span = UnknownSpan) extends Expr
   case class Block(params: List[String], body: List[Statement], span: Span = UnknownSpan) extends Node
   case class CallWithBlock(call: Expr, block: Block, span: Span = UnknownSpan) extends Expr
+  case class RangeExpr(start: Expr, end: Expr, exclusive: Boolean, span: Span = UnknownSpan) extends Expr
   case class BinaryOp(lhs: Expr, op: String, rhs: Expr, span: Span = UnknownSpan) extends Expr
   case class IfExpr(condition: Expr, thenBody: List[Statement], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr
   case class UnlessExpr(condition: Expr, thenBody: List[Statement], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr
