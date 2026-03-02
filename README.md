@@ -119,6 +119,8 @@ import com.github.kmizu.macro_peg.ruby.RubyFullParser
 val astEither = RubyFullParser.parse("""module M; if flag; :ok; end; end""")
 ```
 
+Current prototype coverage includes `class`, `module`, `def`, arrays/hashes, symbols, `if/elsif/else`, `unless`, and postfix modifiers (`stmt if cond` / `stmt unless cond`).
+
 ## Release Note
 
 #### 0.0.9

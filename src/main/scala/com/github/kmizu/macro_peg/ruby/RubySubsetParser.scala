@@ -39,6 +39,7 @@ object RubySubsetParser {
       "class".s /
       "module".s /
       "if".s /
+      "elsif".s /
       "else".s /
       "unless".s /
       "end".s /
@@ -160,14 +161,19 @@ object RubySubsetParser {
   private lazy val params: P[List[String]] =
     sym("(") ~> sepBy0(identifier, sym(",")) <~ sym(")")
 
+  private lazy val simpleStatement: P[Statement] =
+    ((assignStmt / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
+      case stmt ~ Some(modifier) => modifier(stmt)
+      case stmt ~ None => stmt
+    }
+
   private lazy val statement: P[Statement] =
     refer(defStmt) /
       refer(classStmt) /
       refer(moduleStmt) /
-      refer(ifExpr) /
-      refer(unlessExpr) /
-      assignStmt /
-      refer(expr).map(ExprStmt(_))
+      refer(ifStmt) /
+      refer(unlessStmt) /
+      simpleStatement
 
   private lazy val topLevelStatements: P[List[Statement]] =
     sepBy0(statement, sym(";"))
@@ -196,19 +202,39 @@ object RubySubsetParser {
         ModuleDef(name, body)
     }
 
-  private lazy val ifExpr: P[Statement] =
+  private lazy val modifierSuffix: P[Statement => Statement] =
+    (kw("if") ~ refer(expr)).map {
+      case _ ~ condition =>
+        (stmt: Statement) => IfExpr(condition, List(stmt), Nil)
+    } /
+      (kw("unless") ~ refer(expr)).map {
+        case _ ~ condition =>
+          (stmt: Statement) => UnlessExpr(condition, List(stmt), Nil)
+      }
+
+  private lazy val ifTail: P[List[Statement]] =
     (
-      kw("if") ~ refer(expr) ~ sym(";").* ~ blockStatementsUntil(kw("else") / kw("end")) ~
-      sym(";").* ~
-      (kw("else") ~ sym(";").* ~ blockStatementsUntil(kw("end"))).? ~
+      kw("elsif") ~ refer(expr) ~ sym(";").* ~ blockStatementsUntil(kw("elsif") / kw("else") / kw("end")) ~ sym(";").* ~ refer(ifTail)
+    ).map {
+      case _ ~ condition ~ _ ~ body ~ _ ~ tail =>
+        List(IfExpr(condition, body, tail))
+    } /
+      (kw("else") ~ sym(";").* ~ blockStatementsUntil(kw("end"))).map {
+        case _ ~ _ ~ elseBody => elseBody
+      } /
+      (kw("end").and ~> success(Nil))
+
+  private lazy val ifStmt: P[Statement] =
+    (
+      kw("if") ~ refer(expr) ~ sym(";").* ~ blockStatementsUntil(kw("elsif") / kw("else") / kw("end")) ~
+      sym(";").* ~ refer(ifTail) ~
       sym(";").* ~ kw("end")
     ).map {
-      case _ ~ condition ~ _ ~ thenBody ~ _ ~ elseBodyOpt ~ _ ~ _ =>
-        val elseBody = elseBodyOpt.map { case _ ~ _ ~ body => body }.getOrElse(Nil)
+      case _ ~ condition ~ _ ~ thenBody ~ _ ~ elseBody ~ _ ~ _ =>
         IfExpr(condition, thenBody, elseBody)
     }
 
-  private lazy val unlessExpr: P[Statement] =
+  private lazy val unlessStmt: P[Statement] =
     (
       kw("unless") ~ refer(expr) ~ sym(";").* ~ blockStatementsUntil(kw("else") / kw("end")) ~
       sym(";").* ~

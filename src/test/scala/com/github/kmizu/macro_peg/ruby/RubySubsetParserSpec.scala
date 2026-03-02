@@ -112,5 +112,42 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       val parsed = RubyFullParser.parse(input)
       assert(parsed == Right(Program(List(Assign("x", SymbolLiteral("hello", UnknownSpan), UnknownSpan)), UnknownSpan)))
     }
+
+    it("parses if with elsif chain") {
+      val input = "if a; :x; elsif b; :y; else; :z; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          IfExpr(
+            LocalVar("a"),
+            List(ExprStmt(SymbolLiteral("x", UnknownSpan), UnknownSpan)),
+            List(
+              IfExpr(
+                LocalVar("b"),
+                List(ExprStmt(SymbolLiteral("y", UnknownSpan), UnknownSpan)),
+                List(ExprStmt(SymbolLiteral("z", UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              )
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses postfix if/unless modifiers") {
+      val input = "x = 1 if ready; y = 2 unless done"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          IfExpr(LocalVar("ready"), List(Assign("x", IntLiteral(1), UnknownSpan)), Nil, UnknownSpan),
+          UnlessExpr(LocalVar("done"), List(Assign("y", IntLiteral(2), UnknownSpan)), Nil, UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
   }
 }
