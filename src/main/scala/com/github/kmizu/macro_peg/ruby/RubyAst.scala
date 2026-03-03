@@ -18,6 +18,7 @@ object RubyAst {
   case class Return(value: Option[Expr], span: Span = UnknownSpan) extends Statement
   case class RescueClause(exceptionClasses: List[Expr], variable: Option[String], body: List[Statement], span: Span = UnknownSpan) extends Node
   case class BeginRescue(body: List[Statement], rescues: List[RescueClause], elseBody: List[Statement], ensureBody: List[Statement], span: Span = UnknownSpan) extends Statement
+  case class WhenClause(patterns: List[Expr], body: List[Statement], span: Span = UnknownSpan) extends Node
   case class Retry(span: Span = UnknownSpan) extends Statement
   case class ForIn(name: String, iterable: Expr, body: List[Statement], span: Span = UnknownSpan) extends Statement
   case class Def(name: String, params: List[String], body: List[Statement], span: Span = UnknownSpan) extends Statement
@@ -47,6 +48,7 @@ object RubyAst {
   case class AssignExpr(name: String, value: Expr, span: Span = UnknownSpan) extends Expr
   case class IfExpr(condition: Expr, thenBody: List[Statement], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr
   case class UnlessExpr(condition: Expr, thenBody: List[Statement], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr
+  case class CaseExpr(scrutinee: Option[Expr], whens: List[WhenClause], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr
   case class WhileExpr(condition: Expr, body: List[Statement], span: Span = UnknownSpan) extends Expr
   case class UntilExpr(condition: Expr, body: List[Statement], span: Span = UnknownSpan) extends Expr
 }

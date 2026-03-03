@@ -56,6 +56,8 @@ object RubySubsetParser {
       "until".s /
       "for".s /
       "in".s /
+      "case".s /
+      "when".s /
       "if".s /
       "elsif".s /
       "else".s /
@@ -94,6 +96,14 @@ object RubySubsetParser {
 
   private lazy val methodIdentifier: P[String] =
     token(methodIdentifierNoSpace)
+
+  private lazy val punctuatedMethodIdentifierNoSpace: P[String] =
+    (!reservedWord ~ (identifierRaw ~ methodSuffixChar)).map {
+      case _ ~ (base ~ suffix) => base + suffix
+    }
+
+  private lazy val punctuatedMethodIdentifier: P[String] =
+    token(punctuatedMethodIdentifierNoSpace)
 
   private lazy val constStart: P[String] =
     range('A' to 'Z')
@@ -383,9 +393,15 @@ object RubySubsetParser {
   private lazy val commandExpr: P[Expr] =
     receiverCommandCall / commandCall
 
+  private lazy val bareNoArgPunctuatedCall: P[Expr] =
+    punctuatedMethodIdentifier.map(name => Call(None, name, Nil))
+
+  private lazy val positionalParam: P[String] =
+    (identifier ~ (sym("=") ~ refer(expr)).?).map(_._1)
+
   private lazy val formalParam: P[String] =
     (sym("&") ~ identifier).map { case _ ~ name => s"&$name" } /
-      identifier
+      positionalParam
 
   private lazy val blockParams: P[List[String]] =
     sym("|") ~> sepBy0(formalParam, sym(",")) <~ sym("|")
@@ -421,8 +437,20 @@ object RubySubsetParser {
       case call ~ block => ExprStmt(CallWithBlock(call, block))
     }
 
+  private lazy val operatorMethodName: P[String] =
+    "<<".s /
+      ">>".s /
+      "*".s /
+      "+".s /
+      "-".s /
+      "/".s /
+      "%".s
+
+  private lazy val suffixMethodName: P[String] =
+    methodIdentifier / token(operatorMethodName)
+
   private lazy val methodSuffix: P[Expr => Expr] =
-    (sym(".") ~ methodIdentifier ~ callArgs.?).map {
+    ((sym(".") / sym("&.")) ~ suffixMethodName ~ callArgs.?).map {
       case _ ~ name ~ argsOpt =>
         val args = argsOpt.getOrElse(Nil)
         (receiver: Expr) => Call(Some(receiver), name, args)
@@ -443,12 +471,12 @@ object RubySubsetParser {
     }
 
   private lazy val postfixExpr: P[Expr] =
-    ((functionCall / commandExpr / primaryNoCall) ~ callSuffix.*).map {
+    ((functionCall / commandExpr / bareNoArgPunctuatedCall / primaryNoCall) ~ callSuffix.*).map {
       case base ~ suffixes => suffixes.foldLeft(base)((current, suffix) => suffix(current))
     }
 
   private lazy val chainedCallExpr: P[Expr] =
-    ((functionCall / commandExpr / primaryNoCall) ~ callSuffix.+).map {
+    ((functionCall / commandExpr / bareNoArgPunctuatedCall / primaryNoCall) ~ callSuffix.+).map {
       case base ~ suffixes => suffixes.foldLeft(base)((current, suffix) => suffix(current))
     }
 
@@ -479,8 +507,11 @@ object RubySubsetParser {
   private lazy val addSubExpr: P[Expr] =
     chainl(mulDivExpr)(infix("+") / infix("-"))
 
+  private lazy val shiftExpr: P[Expr] =
+    chainl(addSubExpr)(infix("<<") / infix(">>"))
+
   private lazy val relationalExpr: P[Expr] =
-    chainl(addSubExpr)(infix("<=") / infix(">=") / infix("<") / infix(">"))
+    chainl(shiftExpr)(infix("<=") / infix(">=") / infix("<") / infix(">"))
 
   private lazy val equalityExpr: P[Expr] =
     chainl(relationalExpr)(infix("==") / infix("!=") / infix("=~") / infix("!~"))
@@ -497,13 +528,48 @@ object RubySubsetParser {
   private lazy val orExpr: P[Expr] =
     chainl(andExpr)(infix("||") / infixLogicalKeyword("or"))
 
+  private lazy val conditionalExpr: P[Expr] =
+    (orExpr ~ (sym("?") ~ refer(expr) ~ sym(":") ~ refer(expr)).?).map {
+      case condition ~ Some(_ ~ thenExpr ~ _ ~ elseExpr) =>
+        IfExpr(
+          condition,
+          List(ExprStmt(thenExpr)),
+          List(ExprStmt(elseExpr))
+        )
+      case condition ~ None =>
+        condition
+    }
+
   private lazy val assignExpr: P[Expr] =
     (assignableName ~ sym("=") ~ refer(expr)).map {
       case name ~ _ ~ value => AssignExpr(name, value)
     }
 
+  private lazy val receiverAssignExpr: P[Expr] =
+    ((receiverForCommand <~ sym(".")) ~ identifier ~ sym("=") ~ refer(expr)).map {
+      case receiver ~ name ~ _ ~ value =>
+        Call(Some(receiver), s"${name}=", List(value))
+    }
+
+  private lazy val receiverLogicalAssignExpr: P[Expr] =
+    ((receiverForCommand <~ sym(".")) ~ identifier ~ (sym("||=") / sym("&&=")) ~ refer(expr)).map {
+      case receiver ~ name ~ op ~ value =>
+        val lhs = Call(Some(receiver), name, Nil)
+        val underlying = if(op == "||=") "||" else "&&"
+        BinaryOp(lhs, underlying, value)
+    }
+
+  private lazy val receiverCompoundAssignExpr: P[Expr] =
+    ((receiverForCommand <~ sym(".")) ~ identifier ~ compoundAssignOperator ~ refer(expr)).map {
+      case receiver ~ name ~ op ~ value =>
+        val underlying = op.dropRight(1)
+        val lhs = Call(Some(receiver), name, Nil)
+        val rhs = BinaryOp(lhs, underlying, value)
+        Call(Some(receiver), s"${name}=", List(rhs))
+    }
+
   private lazy val expr: P[Expr] =
-    assignExpr / orExpr
+    receiverAssignExpr / receiverLogicalAssignExpr / receiverCompoundAssignExpr / assignExpr / conditionalExpr
 
   private lazy val assignableName: P[String] =
     identifier / instanceVarName / classVarName / globalVarName
@@ -514,10 +580,30 @@ object RubySubsetParser {
     else if(name.startsWith("$")) GlobalVar(name)
     else LocalVar(name)
 
+  private lazy val compoundAssignOperator: P[String] =
+    sym("<<=") /
+      sym(">>=") /
+      sym("+=") /
+      sym("-=") /
+      sym("*=") /
+      sym("/=") /
+      sym("%=") /
+      sym("|=") /
+      sym("&=") /
+      sym("^=")
+
   private lazy val compoundAssignStmt: P[Statement] =
-    (assignableName ~ sym("+=") ~ refer(expr)).map {
-      case name ~ _ ~ value =>
-        Assign(name, BinaryOp(assignableAsExpr(name), "+", value))
+    (assignableName ~ compoundAssignOperator ~ refer(expr)).map {
+      case name ~ op ~ value =>
+        val underlying = op.dropRight(1)
+        Assign(name, BinaryOp(assignableAsExpr(name), underlying, value))
+    }
+
+  private lazy val logicalAssignStmt: P[Statement] =
+    (assignableName ~ (sym("||=") / sym("&&=")) ~ refer(expr)).map {
+      case name ~ op ~ value =>
+        val underlying = if(op == "||=") "||" else "&&"
+        Assign(name, BinaryOp(assignableAsExpr(name), underlying, value))
     }
 
   private lazy val assignStmt: P[Statement] =
@@ -536,8 +622,19 @@ object RubySubsetParser {
   private lazy val params: P[List[String]] =
     sym("(") ~> sepBy0(formalParam, sym(",")) <~ sym(")")
 
+  private lazy val defReceiverName: P[String] =
+    constPathSegments.map(_.mkString("::")) /
+      kw("self").map(_ => "self") /
+      identifierNoSpace
+
+  private lazy val defName: P[String] =
+    ((defReceiverName <~ sym(".")) ~ methodIdentifier).map {
+      case receiver ~ methodName => s"$receiver.$methodName"
+    } /
+      methodIdentifier
+
   private lazy val simpleStatement: P[Statement] =
-    ((returnStmt / retryStmt / compoundAssignStmt / assignStmt / blockCallStmt / receiverCommandCall.map(ExprStmt(_)) / commandCall.map(ExprStmt(_)) / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
+    ((returnStmt / retryStmt / logicalAssignStmt / compoundAssignStmt / assignStmt / blockCallStmt / receiverCommandCall.map(ExprStmt(_)) / commandCall.map(ExprStmt(_)) / refer(expr).map(ExprStmt(_))) ~ modifierSuffix.?).map {
       case stmt ~ Some(modifier) => modifier(stmt)
       case stmt ~ None => stmt
     }
@@ -547,6 +644,7 @@ object RubySubsetParser {
     refer(whileStmt) /
     refer(untilStmt) /
     refer(forStmt) /
+    refer(caseStmt) /
     refer(defStmt) /
       refer(singletonClassStmt) /
       refer(classStmt) /
@@ -595,7 +693,7 @@ object RubySubsetParser {
     }
 
   private lazy val defStmt: P[Statement] =
-    (kw("def") ~ methodIdentifier ~ params.? ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
+    (kw("def") ~ defName ~ params.? ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
       case _ ~ name ~ maybeParams ~ _ ~ body ~ _ ~ _ =>
         Def(name, maybeParams.getOrElse(Nil), body)
     }
@@ -610,6 +708,23 @@ object RubySubsetParser {
     (kw("for") ~ identifier ~ kw("in") ~ refer(expr) ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
       case _ ~ name ~ _ ~ iterable ~ _ ~ body ~ _ ~ _ =>
         ForIn(name, iterable, body)
+    }
+
+  private lazy val whenClause: P[WhenClause] =
+    (kw("when") ~ sepBy1(refer(expr), sym(",")) ~ statementSep.* ~ blockStatementsUntil(kw("when") / kw("else") / kw("end")) ~ statementSep.*).map {
+      case _ ~ patterns ~ _ ~ body ~ _ => WhenClause(patterns, body)
+    }
+
+  private lazy val caseStmt: P[Statement] =
+    (
+      kw("case") ~ refer(expr).? ~ statementSep.* ~ whenClause.+ ~
+      statementSep.* ~
+      (kw("else") ~ statementSep.* ~ blockStatementsUntil(kw("end"))).? ~
+      statementSep.* ~ kw("end")
+    ).map {
+      case _ ~ scrutinee ~ _ ~ whens ~ _ ~ elseOpt ~ _ ~ _ =>
+        val elseBody = elseOpt.map { case _ ~ _ ~ body => body }.getOrElse(Nil)
+        CaseExpr(scrutinee, whens, elseBody)
     }
 
   private lazy val whileStmt: P[Statement] =

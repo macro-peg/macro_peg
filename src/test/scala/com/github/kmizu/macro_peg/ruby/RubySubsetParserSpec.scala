@@ -385,6 +385,27 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses safe-navigation call with operator method name") {
+      val input = "x = timeout&.*(timeout_scale)"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "x",
+            Call(
+              Some(LocalVar("timeout", UnknownSpan)),
+              "*",
+              List(LocalVar("timeout_scale", UnknownSpan)),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
     it("parses return statement in method body") {
       val input = "def f; return 1; end"
       val parsed = RubySubsetParser.parse(input)
@@ -741,6 +762,136 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses bare no-arg punctuated call in condition") {
+      val input = "if block_given?; :ok; else; :ng; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          IfExpr(
+            Call(None, "block_given?", Nil, UnknownSpan),
+            List(ExprStmt(SymbolLiteral("ok", UnknownSpan), UnknownSpan)),
+            List(ExprStmt(SymbolLiteral("ng", UnknownSpan), UnknownSpan)),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses receiver attribute assignment as expression statement") {
+      val input = "self.columns = indent"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(Some(SelfExpr(UnknownSpan)), "columns=", List(LocalVar("indent", UnknownSpan)), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses receiver logical assignment inside condition") {
+      val input = "if (self.columns ||= 0) < n; :ok; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          IfExpr(
+            BinaryOp(
+              BinaryOp(
+                Call(Some(SelfExpr(UnknownSpan)), "columns", Nil, UnknownSpan),
+                "||",
+                IntLiteral(0, UnknownSpan),
+                UnknownSpan
+              ),
+              "<",
+              LocalVar("n", UnknownSpan),
+              UnknownSpan
+            ),
+            List(ExprStmt(SymbolLiteral("ok", UnknownSpan), UnknownSpan)),
+            Nil,
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses receiver compound assignment") {
+      val input = "self.columns += 1"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(
+              Some(SelfExpr(UnknownSpan)),
+              "columns=",
+              List(
+                BinaryOp(
+                  Call(Some(SelfExpr(UnknownSpan)), "columns", Nil, UnknownSpan),
+                  "+",
+                  IntLiteral(1, UnknownSpan),
+                  UnknownSpan
+                )
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses variable minus compound assignment") {
+      val input = "w -= 1"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "w",
+            BinaryOp(LocalVar("w", UnknownSpan), "-", IntLiteral(1, UnknownSpan), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses ternary operator in call arguments") {
+      val input = "x = Test::JobServer.max_jobs(wn > 0 ? wn : 1024)"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "x",
+            Call(
+              Some(ConstRef(List("Test", "JobServer"), UnknownSpan)),
+              "max_jobs",
+              List(
+                IfExpr(
+                  BinaryOp(LocalVar("wn", UnknownSpan), ">", IntLiteral(0, UnknownSpan), UnknownSpan),
+                  List(ExprStmt(LocalVar("wn", UnknownSpan), UnknownSpan)),
+                  List(ExprStmt(IntLiteral(1024, UnknownSpan), UnknownSpan)),
+                  UnknownSpan
+                )
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
     it("parses def name ending with question mark") {
       val input = "def empty?; true; end"
       val parsed = RubySubsetParser.parse(input)
@@ -1001,6 +1152,33 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses shift operators and postfix modifier on expression statements") {
+      val input = "path << \"b\" if n; bits = value >> 2"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          IfExpr(
+            LocalVar("n", UnknownSpan),
+            List(
+              ExprStmt(
+                BinaryOp(LocalVar("path", UnknownSpan), "<<", StringLiteral("b", UnknownSpan), UnknownSpan),
+                UnknownSpan
+              )
+            ),
+            Nil,
+            UnknownSpan
+          ),
+          Assign(
+            "bits",
+            BinaryOp(LocalVar("value", UnknownSpan), ">>", IntLiteral(2, UnknownSpan), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
     it("parses while with assignment expression condition") {
       val input = "while (node = queue.shift); return node if node; end"
       val parsed = RubySubsetParser.parse(input)
@@ -1105,6 +1283,75 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ast == Program(List(
           ExprStmt(
             Call(None, "assert_equal", List(StringLiteral("x", UnknownSpan), StringLiteral("y", UnknownSpan)), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses singleton def with default params and ||= assignment") {
+      val input =
+        """def Dir.mktmpdir(prefix_suffix=nil, tmpdir=nil)
+          |  tmpdir ||= Dir.tmpdir
+          |end
+          |""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Def(
+            "Dir.mktmpdir",
+            List("prefix_suffix", "tmpdir"),
+            List(
+              Assign(
+                "tmpdir",
+                BinaryOp(
+                  LocalVar("tmpdir", UnknownSpan),
+                  "||",
+                  Call(Some(ConstRef(List("Dir"), UnknownSpan)), "tmpdir", Nil, UnknownSpan),
+                  UnknownSpan
+                ),
+                UnknownSpan
+              )
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses case when else expression") {
+      val input =
+        """case prefix_suffix
+          |when nil
+          |  prefix = "d"
+          |when String
+          |  prefix = prefix_suffix
+          |else
+          |  prefix = "x"
+          |end
+          |""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          CaseExpr(
+            Some(LocalVar("prefix_suffix", UnknownSpan)),
+            List(
+              WhenClause(
+                List(NilLiteral(UnknownSpan)),
+                List(Assign("prefix", StringLiteral("d", UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              ),
+              WhenClause(
+                List(ConstRef(List("String"), UnknownSpan)),
+                List(Assign("prefix", LocalVar("prefix_suffix", UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              )
+            ),
+            List(Assign("prefix", StringLiteral("x", UnknownSpan), UnknownSpan)),
             UnknownSpan
           )
         ), UnknownSpan)

@@ -79,3 +79,9 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - 続けて `bootstraptest/test_flow.rb` の line 505 失敗を調査し、配列/呼び出し引数の「カンマ後改行」を許可するよう `arrayLiteral` / `callArgs` / `indexSuffix` に `spacing` 吸収を追加。
 - 回帰テストとして multiline 配列要素・multiline 親付き引数を `RubySubsetParserSpec` に追加し、`test_flow.rb` 単体が通過。
 - corpus 成功率をさらに `17.94% (54/301)` から `18.60% (56/301)` へ改善。
+- 次段で `case/when/else`、singleton `def Dir.mktmpdir(...)`、`||=` を追加し、`RubySubsetParserSpec` に回帰テストを拡充。`case` 節の改行処理バグも修正した。
+- Ruby本家 corpus を再計測して `23.59% (71/301)` まで上昇。続けて `<<` / `>>` 演算子と no-arg punctuation call（`block_given?` など）を導入した。
+- `self.columns = ...` / `self.columns ||= ...` / `self.columns += ...` 形式の receiver attribute assignment を式として扱えるよう拡張し、`w -= 1` を含む複合代入も一般化（`+=` 以外に `-=` `*=` `/=` `%=` `<<=` `>>=` など）した。
+- `wn > 0 ? wn : 1024` 向けに三項演算子を追加。性能回帰を避けるため、`conditionalExpr` は再パースを避ける左因子化実装にした。
+- `timeout&.*(timeout_scale)` のために safe navigation `&.` と演算子メソッド suffix（`*` など）を追加。対応ケースを `RubySubsetParserSpec` へ追加済み。
+- 回帰確認として `sbt test` 全パス、corpus は最新で `24.25% (73/301)`。`bootstraptest/runner.rb` は依然 `BT = Class.new(bt) do ...` 起点で失敗しており、次の掘りポイントとして継続調査中。
