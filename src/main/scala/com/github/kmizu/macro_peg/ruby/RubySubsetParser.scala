@@ -213,6 +213,20 @@ object RubySubsetParser {
       percentWordArrayLiteral("[", "]") /
       percentWordArrayLiteral("<", ">")
 
+  private def percentRegexLiteral(open: String, close: String): P[Expr] =
+    token(("%r".s ~ percentBody(open, close) ~ range('a' to 'z', 'A' to 'Z').*).map {
+      case _ ~ body ~ _ => StringLiteral(body)
+    })
+
+  private lazy val percentRegex: P[Expr] =
+    percentRegexLiteral("{", "}") /
+      percentRegexLiteral("(", ")") /
+      percentRegexLiteral("[", "]") /
+      percentRegexLiteral("<", ">") /
+      percentRegexLiteral("\"", "\"") /
+      percentRegexLiteral("'", "'") /
+      percentRegexLiteral("/", "/")
+
   private lazy val escapedRegexChar: P[String] =
     ("\\".s ~ any).map { case _ ~ c => s"\\$c" }
 
@@ -220,9 +234,10 @@ object RubySubsetParser {
     (!"/".s ~ any).map(_._2)
 
   private lazy val regexLiteral: P[Expr] =
-    token(("/".s ~ (escapedRegexChar / plainRegexChar).* ~ "/".s).map {
-      case _ ~ chars ~ _ => StringLiteral(chars.mkString)
-    })
+    percentRegex /
+      token(("/".s ~ (escapedRegexChar / plainRegexChar).* ~ "/".s ~ range('a' to 'z', 'A' to 'Z').*).map {
+        case _ ~ chars ~ _ ~ _ => StringLiteral(chars.mkString)
+      })
 
   private lazy val symbolLiteral: P[Expr] =
     (
@@ -338,6 +353,9 @@ object RubySubsetParser {
       variable /
       parenExpr
 
+  private lazy val commandExpr: P[Expr] =
+    receiverCommandCall / commandCall
+
   private lazy val formalParam: P[String] =
     (sym("&") ~ identifier).map { case _ ~ name => s"&$name" } /
       identifier
@@ -398,12 +416,12 @@ object RubySubsetParser {
     }
 
   private lazy val postfixExpr: P[Expr] =
-    ((functionCall / primaryNoCall) ~ callSuffix.*).map {
+    ((functionCall / commandExpr / primaryNoCall) ~ callSuffix.*).map {
       case base ~ suffixes => suffixes.foldLeft(base)((current, suffix) => suffix(current))
     }
 
   private lazy val chainedCallExpr: P[Expr] =
-    ((functionCall / primaryNoCall) ~ callSuffix.+).map {
+    ((functionCall / commandExpr / primaryNoCall) ~ callSuffix.+).map {
       case base ~ suffixes => suffixes.foldLeft(base)((current, suffix) => suffix(current))
     }
 
@@ -412,6 +430,9 @@ object RubySubsetParser {
 
   private def infixKeyword(op: String): P[(Expr, Expr) => Expr] =
     kw(op).map(_ => (lhs: Expr, rhs: Expr) => BinaryOp(lhs, op, rhs))
+
+  private def infixLogicalKeyword(op: String): P[(Expr, Expr) => Expr] =
+    ((op.s <~ !identCont) <~ spacing).map(_ => (lhs: Expr, rhs: Expr) => BinaryOp(lhs, op, rhs))
 
   private lazy val unaryExpr: P[Expr] =
     (sym("!") ~ refer(unaryExpr)).map {
@@ -438,10 +459,10 @@ object RubySubsetParser {
     }
 
   private lazy val andExpr: P[Expr] =
-    chainl(rangeExpr)(infix("&&") / infixKeyword("and"))
+    chainl(rangeExpr)(infix("&&") / infixLogicalKeyword("and"))
 
   private lazy val orExpr: P[Expr] =
-    chainl(andExpr)(infix("||") / infixKeyword("or"))
+    chainl(andExpr)(infix("||") / infixLogicalKeyword("or"))
 
   private lazy val expr: P[Expr] =
     orExpr

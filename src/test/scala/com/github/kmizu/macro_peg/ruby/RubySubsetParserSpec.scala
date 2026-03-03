@@ -867,5 +867,53 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses percent-r regex literals in command calls") {
+      val input = """assert_match %r"Invalid #{keyword}\\b", value"""
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(
+              None,
+              "assert_match",
+              List(StringLiteral("Invalid #{keyword}\\\\b"), LocalVar("value", UnknownSpan)),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses multiline or with command-call rhs") {
+      val input =
+        """/freebsd/ =~ RUBY_PLATFORM or
+          |assert_finish 5, %q{ok}
+          |""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            BinaryOp(
+              BinaryOp(
+                StringLiteral("freebsd", UnknownSpan),
+                "=~",
+                ConstRef(List("RUBY_PLATFORM"), UnknownSpan),
+                UnknownSpan
+              ),
+              "or",
+              Call(None, "assert_finish", List(IntLiteral(5), StringLiteral("ok", UnknownSpan)), UnknownSpan),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
   }
 }
