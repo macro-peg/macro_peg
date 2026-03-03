@@ -958,5 +958,113 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses squiggly heredoc argument with trailing args") {
+      val input =
+        """assert_equal "false", <<~RUBY, "literal strings are mutable", "--disable-frozen-string-literal"
+          |  eval("'test'").frozen?
+          |RUBY
+          |""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(
+              None,
+              "assert_equal",
+              List(
+                StringLiteral("false", UnknownSpan),
+                StringLiteral("  eval(\"'test'\").frozen?\n", UnknownSpan),
+                StringLiteral("literal strings are mutable", UnknownSpan),
+                StringLiteral("--disable-frozen-string-literal", UnknownSpan)
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses unary plus and minus operators") {
+      val input = "line = -2; value = +line"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign("line", UnaryOp("-", IntLiteral(2, UnknownSpan), UnknownSpan), UnknownSpan),
+          Assign("value", UnaryOp("+", LocalVar("line", UnknownSpan), UnknownSpan), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses while with assignment expression condition") {
+      val input = "while (node = queue.shift); return node if node; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          WhileExpr(
+            AssignExpr(
+              "node",
+              Call(Some(LocalVar("queue", UnknownSpan)), "shift", Nil, UnknownSpan),
+              UnknownSpan
+            ),
+            List(
+              IfExpr(
+                LocalVar("node", UnknownSpan),
+                List(Return(Some(LocalVar("node", UnknownSpan)), UnknownSpan)),
+                Nil,
+                UnknownSpan
+              )
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses symbol literals for forwarding markers") {
+      val input = "scopes = [:*, :**, :&]"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "scopes",
+            ArrayLiteral(
+              List(
+                SymbolLiteral("*", UnknownSpan),
+                SymbolLiteral("**", UnknownSpan),
+                SymbolLiteral("&", UnknownSpan)
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses script body after -x style shell preamble") {
+      val input =
+        """"exec" "${RUBY-ruby}" "-x" "$0" "$@" || true # -*- Ruby -*-
+          |#!./ruby
+          |ok 1
+          |""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(Call(None, "ok", List(IntLiteral(1, UnknownSpan)), UnknownSpan), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
   }
 }

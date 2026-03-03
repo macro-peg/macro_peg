@@ -119,7 +119,7 @@ import com.github.kmizu.macro_peg.ruby.RubyFullParser
 val astEither = RubyFullParser.parse("""module M; if flag; :ok; end; end""")
 ```
 
-Current prototype coverage includes `class`/`module`/`def` (including class superclass headers like `class C < Base`, singleton class `class << self`, and punctuated method names like `empty?`), arrays/hashes (including label style entries like `{foo: 1}`), symbols (including variable-like symbols such as `:$a`, `:@x`, `:@@y`), `if/elsif/else`, `unless`, `for ... in ... end`, `begin/rescue/ensure` (+ `retry`), postfix modifiers (`stmt if cond` / `stmt unless cond`), `return`, `self`, instance/class/global variables (`@x`, `@@x`, `$x`), constant-path references (`A::B`), single/percent-quoted string literals (`'x'`, `%q{...}`, `%Q{...}`, `%{...}` with nested paired delimiters), percent word arrays (`%w[...]`, `%W[...]`), regex literals (`/.../`, `%r{...}`, `%r"..."`), command-style no-parentheses calls (`puts :ok`, `add 1, 2`), call keyword arguments (`f(x: 1)` / `f x: 1`), dot-call chains (including no-arg links like `user.profile.name`), bracket index calls (`ENV["HOME"]`), range expressions (`1..5` / `1...5`), comparison/logical/unary/match operators (`==`, `!=`, `=~`, `!~`, `<`, `>`, `&&`, `||`, `!`, `and`, `or`), Ruby block comments (`=begin ... =end`), block-pass params/args (`&block`), call-attached blocks (`do/end`, `{}`), and newline-separated statements.
+Current prototype coverage includes `class`/`module`/`def` (including class superclass headers like `class C < Base`, singleton class `class << self`, and punctuated method names like `empty?`), arrays/hashes (including label style entries like `{foo: 1}`), symbols (including variable-like symbols such as `:$a`, `:@x`, `:@@y` and forwarding markers `:*`/`:**`/`:&`), `if/elsif/else`, `unless`, `while`, `until`, `for ... in ... end`, `begin/rescue/ensure` (+ `retry`), postfix modifiers (`stmt if cond` / `stmt unless cond`), `return`, `self`, instance/class/global variables (`@x`, `@@x`, `$x`), constant-path references (`A::B`), single/percent-quoted string literals (`'x'`, `%q{...}`, `%Q{...}`, `%{...}` with nested paired delimiters), percent word arrays (`%w[...]`, `%W[...]`), regex literals (`/.../`, `%r{...}`, `%r"..."`), command-style no-parentheses calls (`puts :ok`, `add 1, 2`), call keyword arguments (`f(x: 1)` / `f x: 1`), dot-call chains (including no-arg links like `user.profile.name`), bracket index calls (`ENV["HOME"]`), range expressions (`1..5` / `1...5`), comparison/logical/unary/match operators (`==`, `!=`, `=~`, `!~`, `<`, `>`, `&&`, `||`, `!`, `+`, `-`, `and`, `or`), assignment expression in conditions (`while (x = f())`), squiggly heredoc arguments (`<<~TAG`), Ruby block comments (`=begin ... =end`), `-x` style script preamble stripping, block-pass params/args (`&block`), call-attached blocks (`do/end`, `{}`), and newline-separated statements.
 
 To run Ruby upstream `.rb` corpus files against the current parser:
 
@@ -136,6 +136,7 @@ Optional environment variables:
 
 - `RUBY_CORPUS_TIMEOUT_MS` (default: `1000`)
 - `RUBY_CORPUS_FAIL_SAMPLES` (default: `20`)
+- `RUBY_CORPUS_FULL_ERROR` (`1` to print full formatted failures, default: first line only)
 
 ## Release Note
 

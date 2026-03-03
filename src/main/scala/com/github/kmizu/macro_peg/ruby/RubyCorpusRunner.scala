@@ -57,6 +57,7 @@ object RubyCorpusRunner {
     val started = System.nanoTime()
     val timeoutMs = sys.env.get("RUBY_CORPUS_TIMEOUT_MS").flatMap(v => v.toIntOption).getOrElse(1000)
     val sampleLimit = sys.env.get("RUBY_CORPUS_FAIL_SAMPLES").flatMap(v => v.toIntOption).getOrElse(20)
+    val fullError = sys.env.get("RUBY_CORPUS_FULL_ERROR").contains("1")
 
     var success = 0
     val failures = scala.collection.mutable.ArrayBuffer.empty[(Path, String)]
@@ -68,7 +69,7 @@ object RubyCorpusRunner {
           case Right(_) =>
             success += 1
           case Left(error) =>
-            if(failures.size < sampleLimit) failures += path -> firstLine(error)
+            if(failures.size < sampleLimit) failures += path -> (if(fullError) error else firstLine(error))
         }
       } catch {
         case NonFatal(e) =>

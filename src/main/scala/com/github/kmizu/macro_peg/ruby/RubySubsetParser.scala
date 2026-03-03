@@ -5,6 +5,7 @@ import com.github.kmizu.macro_peg.ruby.RubyAst._
 
 object RubySubsetParser {
   private type P[+A] = MacroParser[A]
+  private case class PendingHeredoc(token: String, terminator: String, lines: scala.collection.mutable.ArrayBuffer[String])
 
   private lazy val horizontalSpaceChar: P[Unit] =
     range(' ' to ' ', '\t' to '\t', '\r' to '\r').map(_ => ())
@@ -51,6 +52,8 @@ object RubySubsetParser {
       "def".s /
       "class".s /
       "module".s /
+      "while".s /
+      "until".s /
       "for".s /
       "in".s /
       "if".s /
@@ -184,6 +187,16 @@ object RubySubsetParser {
     }
   }
 
+  private def percentBodySimple(delim: String): P[String] = {
+    lazy val escaped: P[String] =
+      ("\\".s ~ any).map { case _ ~ c => s"\\$c" }
+    lazy val plain: P[String] =
+      (!delim.s ~ any).map(_._2)
+    (delim.s ~ (escaped / plain).* ~ delim.s).map {
+      case _ ~ chars ~ _ => chars.mkString
+    }
+  }
+
   private def percentStringLiteral(open: String, close: String): P[Expr] =
     token((("%q".s / "%Q".s / "%".s) ~ percentBody(open, close)).map {
       case _ ~ body => StringLiteral(body)
@@ -218,14 +231,19 @@ object RubySubsetParser {
       case _ ~ body ~ _ => StringLiteral(body)
     })
 
+  private def percentRegexLiteralSimple(delim: String): P[Expr] =
+    token(("%r".s ~ percentBodySimple(delim) ~ range('a' to 'z', 'A' to 'Z').*).map {
+      case _ ~ body ~ _ => StringLiteral(body)
+    })
+
   private lazy val percentRegex: P[Expr] =
     percentRegexLiteral("{", "}") /
       percentRegexLiteral("(", ")") /
       percentRegexLiteral("[", "]") /
       percentRegexLiteral("<", ">") /
-      percentRegexLiteral("\"", "\"") /
-      percentRegexLiteral("'", "'") /
-      percentRegexLiteral("/", "/")
+      percentRegexLiteralSimple("\"") /
+      percentRegexLiteralSimple("'") /
+      percentRegexLiteralSimple("/")
 
   private lazy val escapedRegexChar: P[String] =
     ("\\".s ~ any).map { case _ ~ c => s"\\$c" }
@@ -240,19 +258,17 @@ object RubySubsetParser {
       })
 
   private lazy val symbolLiteral: P[Expr] =
-    (
-      (sym(":") ~ token(identifierRaw)).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
-    ) / (
+    (sym(":") ~ token("**".s / "*".s / "&".s)).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) } /
+      (sym(":") ~ token(identifierRaw)).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) } /
       (sym(":") ~ classVarName).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
-    ) / (
+      /
       (sym(":") ~ instanceVarName).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
-    ) / (
+      /
       (sym(":") ~ globalVarName).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
-    ) / (
+      /
       (sym(":") ~ token(("\"".s ~ (escapedChar / plainStringChar).* ~ "\"".s).map {
         case _ ~ chars ~ _ => chars.mkString
       })).map { case _ ~ name => SymbolLiteral(name, UnknownSpan) }
-    )
 
   private lazy val boolLiteral: P[Expr] =
     kw("true").map(_ => BoolLiteral(true)) /
@@ -450,6 +466,12 @@ object RubySubsetParser {
     (sym("!") ~ refer(unaryExpr)).map {
       case _ ~ target => UnaryOp("!", target)
     } /
+      (sym("-") ~ refer(unaryExpr)).map {
+        case _ ~ target => UnaryOp("-", target)
+      } /
+      (sym("+") ~ refer(unaryExpr)).map {
+        case _ ~ target => UnaryOp("+", target)
+    } /
       postfixExpr
 
   private lazy val mulDivExpr: P[Expr] =
@@ -476,8 +498,13 @@ object RubySubsetParser {
   private lazy val orExpr: P[Expr] =
     chainl(andExpr)(infix("||") / infixLogicalKeyword("or"))
 
+  private lazy val assignExpr: P[Expr] =
+    (assignableName ~ sym("=") ~ refer(expr)).map {
+      case name ~ _ ~ value => AssignExpr(name, value)
+    }
+
   private lazy val expr: P[Expr] =
-    orExpr
+    assignExpr / orExpr
 
   private lazy val assignableName: P[String] =
     identifier / instanceVarName / classVarName / globalVarName
@@ -518,6 +545,8 @@ object RubySubsetParser {
 
   private lazy val statement: P[Statement] =
     refer(beginStmt) /
+    refer(whileStmt) /
+    refer(untilStmt) /
     refer(forStmt) /
     refer(defStmt) /
       refer(singletonClassStmt) /
@@ -584,6 +613,18 @@ object RubySubsetParser {
         ForIn(name, iterable, body)
     }
 
+  private lazy val whileStmt: P[Statement] =
+    (kw("while") ~ refer(expr) ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
+      case _ ~ condition ~ _ ~ body ~ _ ~ _ =>
+        WhileExpr(condition, body)
+    }
+
+  private lazy val untilStmt: P[Statement] =
+    (kw("until") ~ refer(expr) ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
+      case _ ~ condition ~ _ ~ body ~ _ ~ _ =>
+        UntilExpr(condition, body)
+    }
+
   private lazy val classStmt: P[Statement] =
     (kw("class") ~ constPathSegments ~ (sym("<") ~ refer(expr)).?.map(_.map(_._2)) ~ statementSep.* ~ blockStatements ~ statementSep.* ~ kw("end")).map {
       case _ ~ name ~ superClass ~ _ ~ body ~ _ ~ _ =>
@@ -643,7 +684,73 @@ object RubySubsetParser {
   private lazy val program: P[Program] =
     (spacing ~> (topLevelStatements <~ statementSep.*) <~ spacing).map(stmts => Program(stmts))
 
+  private def encodeDoubleQuoted(value: String): String =
+    "\"" + value.flatMap {
+      case '\\' => "\\\\"
+      case '"' => "\\\""
+      case '\n' => "\\n"
+      case '\r' => "\\r"
+      case '\t' => "\\t"
+      case c => c.toString
+    } + "\""
+
+  private def normalizeSquigglyHeredoc(input: String): String = {
+    val heredocPattern = "<<~([A-Za-z_][A-Za-z0-9_]*)".r
+    val outputLines = scala.collection.mutable.ArrayBuffer.empty[String]
+    val replacements = scala.collection.mutable.ArrayBuffer.empty[(String, String)]
+    val pending = scala.collection.mutable.Queue.empty[PendingHeredoc]
+    var nextId = 0
+    val lines = input.split("\n", -1)
+
+    lines.foreach { line =>
+      if(pending.nonEmpty) {
+        val current = pending.front
+        if(line.trim == current.terminator) {
+          pending.dequeue()
+          val content =
+            if(current.lines.isEmpty) ""
+            else current.lines.mkString("\n") + "\n"
+          replacements += current.token -> encodeDoubleQuoted(content)
+        } else {
+          current.lines += line
+        }
+      } else {
+        val matches = heredocPattern.findAllMatchIn(line).toList
+        if(matches.isEmpty) {
+          outputLines += line
+        } else {
+          val tokens = matches.map { m =>
+            val token = s"__MACROPEG_HEREDOC_${nextId}__"
+            nextId += 1
+            pending.enqueue(PendingHeredoc(token, m.group(1), scala.collection.mutable.ArrayBuffer.empty[String]))
+            token
+          }
+          val replacedLine = (matches zip tokens).reverse.foldLeft(line) { case (acc, (m, token)) =>
+            acc.substring(0, m.start) + token + acc.substring(m.end)
+          }
+          outputLines += replacedLine
+        }
+      }
+    }
+
+    if(pending.nonEmpty) input
+    else {
+      replacements.foldLeft(outputLines.mkString("\n")) { case (text, (token, value)) =>
+        text.replace(token, value)
+      }
+    }
+  }
+
+  private def stripXOptionPreamble(input: String): String = {
+    val lines = input.split("\n", -1).toList
+    val shebangIndex = lines.indexWhere(_.startsWith("#!"))
+    if(shebangIndex > 0 && lines.take(shebangIndex).exists(_.contains("-x"))) {
+      lines.drop(shebangIndex + 1).mkString("\n")
+    } else input
+  }
+
   def parse(input: String): Either[String, Program] = {
-    parseAll(program, input).left.map(f => formatFailure(input, f))
+    val normalized = normalizeSquigglyHeredoc(stripXOptionPreamble(input))
+    parseAll(program, normalized).left.map(f => formatFailure(normalized, f))
   }
 }

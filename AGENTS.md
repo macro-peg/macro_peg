@@ -70,3 +70,9 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - corpus 成功率を `13.95% (42/301)` から `14.95% (45/301)` へ更新。未対応構文まで進んだ結果、`test_eval.rb` は即失敗から timeout に遷移したので次段で絞り込み予定。
 - 次段で keyword 系を拡張し、`foo: 1` 形式の label hash entry と call 引数の keyword label（`f(x: 1)` / `f x: 1`）を追加。Prism系で多い `command_line: "p"` 形に対応する土台を作った。
 - `RubySubsetParserSpec` に label hash / keyword arg の回帰テストを追加し、corpus 成功率を `14.95% (45/301)` から `15.61% (47/301)` へ改善。
+- `%r"..."` の同一delimiterネストで発生していた探索爆発を修正。非ネスト専用の `percentBodySimple` を導入して `bootstraptest/test_eval.rb` の timeout を解消（1秒以内で通常判定に復帰）。
+- squiggly heredoc（`<<~TAG`）を parser前処理で文字列リテラル化し、`assert_equal "x", <<~RUBY, ...` のような trailing args 付き呼び出しを通せるようにした。`test_eval.rb` 単体が通過。
+- ASTとparserを拡張して `while` / `until`、代入式（`AssignExpr`）、単項 `+/-`、forwarding symbol literal（`:*` / `:**` / `:&`）を追加。`test/prism/api/parse_test.rb` 単体が通過。
+- `RubyCorpusRunner` に `RUBY_CORPUS_FULL_ERROR=1` オプションを追加して失敗サンプルの詳細表示を可能化。デバッグ効率を上げた。
+- `-x` 付きスクリプト前置き（shell preamble）を parse 前に除去する処理を追加。`runner.rb` の先頭失敗が line1 から line19 へ前進。
+- 再計測で corpus 成功率を `15.61% (47/301)` から `17.94% (54/301)` に改善（+7）。
