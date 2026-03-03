@@ -301,10 +301,11 @@ object RubySubsetParser {
   private lazy val parenExpr: P[Expr] =
     (sym("(") ~ refer(expr) ~ sym(")")).map { case _ ~ e ~ _ => e }
 
+  private lazy val spacedExpr: P[Expr] =
+    spacing ~> refer(expr) <~ spacing
+
   private lazy val arrayLiteral: P[Expr] =
-    (sym("[") ~ sepBy0(refer(expr), sym(",")) ~ sym("]")).map {
-      case _ ~ elements ~ _ => ArrayLiteral(elements)
-    }
+    (sym("[") ~> spacing ~> sepBy0(spacedExpr, sym(",")) <~ spacing <~ sym("]")).map(ArrayLiteral(_))
 
   private lazy val labelHashEntry: P[(Expr, Expr)] =
     ((identifierNoSpace <~ sym(":")) ~ refer(expr)).map {
@@ -316,12 +317,10 @@ object RubySubsetParser {
       (refer(expr) ~ sym("=>") ~ refer(expr)).map { case key ~ _ ~ value => key -> value }
 
   private lazy val hashLiteral: P[Expr] =
-    (sym("{") ~ sepBy0(hashEntry, sym(",")) ~ sym("}")).map {
-      case _ ~ entries ~ _ => HashLiteral(entries)
-    }
+    (sym("{") ~> spacing ~> sepBy0(hashEntry, sym(",")) <~ spacing <~ sym("}")).map(HashLiteral(_))
 
   private lazy val callArgs: P[List[Expr]] =
-    sym("(") ~> sepBy0(callArgExpr, sym(",")) <~ sym(")")
+    sym("(") ~> spacing ~> sepBy0(spacing ~> callArgExpr <~ spacing, sym(",")) <~ spacing <~ sym(")")
 
   private lazy val commandArgs: P[List[Expr]] =
     sepBy1(callArgExpr, sym(","))
@@ -430,8 +429,8 @@ object RubySubsetParser {
     }
 
   private lazy val indexSuffix: P[Expr => Expr] =
-    (sym("[") ~ sepBy0(refer(expr), sym(",")) ~ sym("]")).map {
-      case _ ~ args ~ _ =>
+    (sym("[") ~ spacing ~ sepBy0(spacedExpr, sym(",")) ~ spacing ~ sym("]")).map {
+      case _ ~ _ ~ args ~ _ ~ _ =>
         (receiver: Expr) => Call(Some(receiver), "[]", args)
     }
 

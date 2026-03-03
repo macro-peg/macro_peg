@@ -76,3 +76,6 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - `RubyCorpusRunner` に `RUBY_CORPUS_FULL_ERROR=1` オプションを追加して失敗サンプルの詳細表示を可能化。デバッグ効率を上げた。
 - `-x` 付きスクリプト前置き（shell preamble）を parse 前に除去する処理を追加。`runner.rb` の先頭失敗が line1 から line19 へ前進。
 - 再計測で corpus 成功率を `15.61% (47/301)` から `17.94% (54/301)` に改善（+7）。
+- 続けて `bootstraptest/test_flow.rb` の line 505 失敗を調査し、配列/呼び出し引数の「カンマ後改行」を許可するよう `arrayLiteral` / `callArgs` / `indexSuffix` に `spacing` 吸収を追加。
+- 回帰テストとして multiline 配列要素・multiline 親付き引数を `RubySubsetParserSpec` に追加し、`test_flow.rb` 単体が通過。
+- corpus 成功率をさらに `17.94% (54/301)` から `18.60% (56/301)` へ改善。

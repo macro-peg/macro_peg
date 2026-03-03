@@ -1066,5 +1066,49 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses array literal entries split across newlines") {
+      val input =
+        """pairs = [
+          |  ["a", 1],
+          |  ["b", 2]
+          |]
+          |""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "pairs",
+            ArrayLiteral(List(
+              ArrayLiteral(List(StringLiteral("a", UnknownSpan), IntLiteral(1, UnknownSpan)), UnknownSpan),
+              ArrayLiteral(List(StringLiteral("b", UnknownSpan), IntLiteral(2, UnknownSpan)), UnknownSpan)
+            ), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses parenthesized call args split across newlines") {
+      val input =
+        """assert_equal(
+          |  "x",
+          |  "y"
+          |)
+          |""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(None, "assert_equal", List(StringLiteral("x", UnknownSpan), StringLiteral("y", UnknownSpan)), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
   }
 }
