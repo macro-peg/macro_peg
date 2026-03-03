@@ -28,6 +28,7 @@ object RubyAst {
   case class ModuleDef(name: String, body: List[Statement], span: Span = UnknownSpan) extends Statement
 
   case class IntLiteral(value: Long, span: Span = UnknownSpan) extends Expr
+  case class FloatLiteral(value: Double, span: Span = UnknownSpan) extends Expr
   case class StringLiteral(value: String, span: Span = UnknownSpan) extends Expr
   case class SymbolLiteral(value: String, span: Span) extends Expr
   case class BoolLiteral(value: Boolean, span: Span = UnknownSpan) extends Expr
@@ -43,6 +44,7 @@ object RubyAst {
   case class Call(receiver: Option[Expr], methodName: String, args: List[Expr], span: Span = UnknownSpan) extends Expr
   case class Block(params: List[String], body: List[Statement], span: Span = UnknownSpan) extends Node
   case class CallWithBlock(call: Expr, block: Block, span: Span = UnknownSpan) extends Expr
+  case class LambdaLiteral(params: List[String], body: List[Statement], span: Span = UnknownSpan) extends Expr
   case class RangeExpr(start: Expr, end: Expr, exclusive: Boolean, span: Span = UnknownSpan) extends Expr
   case class UnaryOp(op: String, expr: Expr, span: Span = UnknownSpan) extends Expr
   case class BinaryOp(lhs: Expr, op: String, rhs: Expr, span: Span = UnknownSpan) extends Expr

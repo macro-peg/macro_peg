@@ -93,3 +93,8 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - 続きで `BT.columns > 0` / `e and BT.columns > 0` が落ちる回帰を修正。演算子前空白の扱いを見直し、`RubySubsetParserSpec` に比較式・`and` 連鎖の回帰テストを追加した。
 - `puts tests.map {|path| File.basename(path) }.inspect` のような「空白あり brace-block suffix + chain」を通すため、`blockAttachSuffix` の空白吸収と `braceBlock` の閉じ波括弧手前空白を対応。関連テスト（command arg / `Thread.new{ r.read }`）を追加。
 - `sbt test` と `RubySubsetParserSpec` は全パス維持。ただし full corpus は現時点で `21.26% (64/301, timeout=1000ms)` まで低下しており、`runner.rb` は依然 timeout。性能回帰と `class Assertion` 以降の解析継続が次タスク。
+- `runner.rb` 再攻略で、`def ... rescue/else/ensure ... end` を `defStmt` 側でも正式対応。さらに postfix `rescue` modifier（`r.close rescue nil`）と `%` 二項演算子を追加して、`with_stderr` / `show_progress` 周辺の詰まりを解消した。
+- `blockStatementsUntil` を再帰型に作り直して、複数 `rescue` 節で改行をまたぐケースを安定化。`def f ... rescue E1 ... rescue E2 ...` の回帰テストを追加した。
+- `-> as do ... end` の lambda literal を `LambdaLiteral` AST として追加し、`add_assertion testsrc, -> as do ... end` を通過可能にした。加えて keyword parameter（`timeout: ...`）と特殊グローバル `$?` も対応。
+- `sleep 0.1` で詰まっていたため `FloatLiteral` を導入。postfix `while/until` を statement 全体へ適用できるようにして `end while true` も受理するよう拡張した。
+- 検証結果は `RubySubsetParserSpec` 98テスト + `sbt test` 全体151テスト全パス。full corpus は `24.92% (75/301)` から `26.91% (81/301)` へ改善（+6）。`runner.rb` は構文的には通るが `timeout=1000ms` では約1.05秒で依然 timeout。

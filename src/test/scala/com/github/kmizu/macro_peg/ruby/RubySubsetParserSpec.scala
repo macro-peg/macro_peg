@@ -167,6 +167,67 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses postfix rescue modifier") {
+      val input = "r.close rescue nil"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          BeginRescue(
+            List(ExprStmt(Call(Some(LocalVar("r", UnknownSpan)), "close", Nil, UnknownSpan), UnknownSpan)),
+            List(
+              RescueClause(
+                Nil,
+                None,
+                List(ExprStmt(NilLiteral(UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              )
+            ),
+            Nil,
+            Nil,
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses postfix while modifier on begin-rescue block") {
+      val input =
+        """begin
+          |  x = 1
+          |rescue E
+          |  x = 2
+          |end while ready""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          WhileExpr(
+            LocalVar("ready", UnknownSpan),
+            List(
+              BeginRescue(
+                List(Assign("x", IntLiteral(1, UnknownSpan), UnknownSpan)),
+                List(
+                  RescueClause(
+                    List(ConstRef(List("E"), UnknownSpan)),
+                    None,
+                    List(Assign("x", IntLiteral(2, UnknownSpan), UnknownSpan)),
+                    UnknownSpan
+                  )
+                ),
+                Nil,
+                Nil,
+                UnknownSpan
+              )
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
     it("parses command-style calls without parentheses") {
       val input = "puts :ok; add 1, 2"
       val parsed = RubySubsetParser.parse(input)
@@ -180,6 +241,21 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
           ),
           ExprStmt(
             Call(None, "add", List(IntLiteral(1), IntLiteral(2)), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses float literal in command-style call arguments") {
+      val input = "sleep 0.1"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(None, "sleep", List(FloatLiteral(0.1, UnknownSpan)), UnknownSpan),
             UnknownSpan
           )
         ), UnknownSpan)
@@ -447,6 +523,28 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses return with multiple values") {
+      val input = "def f; return out, err; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Def(
+            "f",
+            Nil,
+            List(
+              Return(
+                Some(ArrayLiteral(List(LocalVar("out", UnknownSpan), LocalVar("err", UnknownSpan)), UnknownSpan)),
+                UnknownSpan
+              )
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
     it("parses bare return with postfix modifier") {
       val input = "return if done"
       val parsed = RubySubsetParser.parse(input)
@@ -695,6 +793,94 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses def body with rescue-else-ensure sections") {
+      val input =
+        """def f
+          |  x = 1
+          |rescue Error => e
+          |  x = 2
+          |else
+          |  x = 3
+          |ensure
+          |  x = 4
+          |end""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Def(
+            "f",
+            Nil,
+            List(
+              BeginRescue(
+                List(Assign("x", IntLiteral(1, UnknownSpan), UnknownSpan)),
+                List(
+                  RescueClause(
+                    List(ConstRef(List("Error"), UnknownSpan)),
+                    Some("e"),
+                    List(Assign("x", IntLiteral(2, UnknownSpan), UnknownSpan)),
+                    UnknownSpan
+                  )
+                ),
+                List(Assign("x", IntLiteral(3, UnknownSpan), UnknownSpan)),
+                List(Assign("x", IntLiteral(4, UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              )
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses def body with multiple rescue clauses") {
+      val input =
+        """def f
+          |  x = 1
+          |rescue E1
+          |  x = 2
+          |rescue E2 => err
+          |  x = 3
+          |ensure
+          |  x = 4
+          |end""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Def(
+            "f",
+            Nil,
+            List(
+              BeginRescue(
+                List(Assign("x", IntLiteral(1, UnknownSpan), UnknownSpan)),
+                List(
+                  RescueClause(
+                    List(ConstRef(List("E1"), UnknownSpan)),
+                    None,
+                    List(Assign("x", IntLiteral(2, UnknownSpan), UnknownSpan)),
+                    UnknownSpan
+                  ),
+                  RescueClause(
+                    List(ConstRef(List("E2"), UnknownSpan)),
+                    Some("err"),
+                    List(Assign("x", IntLiteral(3, UnknownSpan), UnknownSpan)),
+                    UnknownSpan
+                  )
+                ),
+                Nil,
+                List(Assign("x", IntLiteral(4, UnknownSpan), UnknownSpan)),
+                UnknownSpan
+              )
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
     it("parses singleton class definition") {
       val input =
         """class << self
@@ -733,6 +919,18 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
           Assign("$z", IntLiteral(3), UnknownSpan),
           Assign("w", BinaryOp(InstanceVar("@x", UnknownSpan), "+", ClassVar("@@y", UnknownSpan), UnknownSpan), UnknownSpan),
           Assign("v", GlobalVar("$z", UnknownSpan), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses special global variable $?") {
+      val input = "status = $?"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign("status", GlobalVar("$?", UnknownSpan), UnknownSpan)
         ), UnknownSpan)
       )
     }
@@ -894,6 +1092,60 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses keyword parameters with defaults in def") {
+      val input = "def f(opt = '', timeout: BT.timeout, **argh); end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Def(
+            "f",
+            List("opt", "timeout:", "**argh"),
+            Nil,
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses lambda literal argument with bare parameter") {
+      val input = "add_assertion testsrc, -> as do; as.id = 1; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(
+              None,
+              "add_assertion",
+              List(
+                LocalVar("testsrc", UnknownSpan),
+                LambdaLiteral(
+                  List("as"),
+                  List(
+                    ExprStmt(
+                      Call(
+                        Some(LocalVar("as", UnknownSpan)),
+                        "id=",
+                        List(IntLiteral(1, UnknownSpan)),
+                        UnknownSpan
+                      ),
+                      UnknownSpan
+                    )
+                  ),
+                  UnknownSpan
+                )
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
     it("parses symbol block-pass argument") {
       val input = "ts.each(&:kill)"
       val parsed = RubySubsetParser.parse(input)
@@ -939,6 +1191,27 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
             ),
             List(ExprStmt(Call(None, "ok!", List(IntLiteral(1)), UnknownSpan), UnknownSpan)),
             Nil,
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses modulo operator in expression") {
+      val input = "msg = '%.2f' % sec"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "msg",
+            BinaryOp(
+              StringLiteral("%.2f", UnknownSpan),
+              "%",
+              LocalVar("sec", UnknownSpan),
+              UnknownSpan
+            ),
             UnknownSpan
           )
         ), UnknownSpan)

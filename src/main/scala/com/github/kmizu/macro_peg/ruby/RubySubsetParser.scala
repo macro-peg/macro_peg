@@ -138,6 +138,7 @@ object RubySubsetParser {
       ("$".s ~ identifierRaw).map { case _ ~ name => s"$$$name" } /
         ("$".s ~ range('0' to '9').+).map { case _ ~ digits => s"$$${digits.mkString}" } /
         "$!".s /
+        "$?".s /
         "$@".s /
         "$&".s /
         "$`".s /
@@ -165,7 +166,13 @@ object RubySubsetParser {
     }
 
   private lazy val integerLiteral: P[Expr] =
-    token(range('0' to '9').+).map(ds => IntLiteral(ds.mkString.toLong))
+    token((range('0' to '9').+ <~ !(".".s ~ range('0' to '9')))).map(ds => IntLiteral(ds.mkString.toLong))
+
+  private lazy val floatLiteral: P[Expr] =
+    token((range('0' to '9').+ ~ ".".s ~ range('0' to '9').+)).map {
+      case intPart ~ _ ~ fracPart =>
+        FloatLiteral(s"${intPart.mkString}.${fracPart.mkString}".toDouble)
+    }
 
   private lazy val escapedChar: P[String] =
     ("\\".s ~ any).map {
@@ -444,7 +451,9 @@ object RubySubsetParser {
     }
 
   private lazy val primaryNoCall: P[Expr] =
-    integerLiteral /
+    lambdaLiteral /
+      integerLiteral /
+      floatLiteral /
       stringLiteral /
       singleQuotedStringLiteral /
       backtickLiteral /
@@ -470,10 +479,16 @@ object RubySubsetParser {
   private lazy val positionalParam: P[String] =
     (identifier ~ (sym("=") ~ refer(expr)).?).map(_._1)
 
+  private lazy val keywordParam: P[String] =
+    ((identifierNoSpace <~ sym(":")) ~ refer(expr).?).map {
+      case name ~ _ => s"$name:"
+    }
+
   private lazy val formalParam: P[String] =
     (sym("**") ~ identifier).map { case _ ~ name => s"**$name" } /
       (sym("*") ~ identifier).map { case _ ~ name => s"*$name" } /
       (sym("&") ~ identifier).map { case _ ~ name => s"&$name" } /
+      keywordParam /
       positionalParam
 
   private lazy val blockParams: P[List[String]] =
@@ -505,6 +520,13 @@ object RubySubsetParser {
 
   private lazy val blockLiteral: P[Block] =
     doBlock / braceBlock
+
+  private lazy val lambdaLiteral: P[Expr] =
+    (sym("->") ~ (params / bareParams).? ~ blockLiteral).map {
+      case _ ~ maybeParams ~ block =>
+        val lambdaParams = maybeParams.getOrElse(block.params)
+        LambdaLiteral(lambdaParams, block.body)
+    }
 
   private lazy val lineBreak: P[Unit] =
     ("\n".s ~ inlineSpacing).void
@@ -606,7 +628,7 @@ object RubySubsetParser {
       (postfixExpr <~ horizontalSpacing)
 
   private lazy val mulDivExpr: P[Expr] =
-    chainl(unaryExpr)(infix("*") / infix("/"))
+    chainl(unaryExpr)(infix("*") / infix("/") / infix("%"))
 
   private lazy val addSubExpr: P[Expr] =
     chainl(mulDivExpr)(infix("+") / infix("-"))
@@ -770,8 +792,14 @@ object RubySubsetParser {
       case name ~ _ ~ value => Assign(name, value)
     }
 
+  private lazy val returnValueExpr: P[Expr] =
+    sepBy1(refer(expr), sym(",")).map {
+      case value :: Nil => value
+      case values => ArrayLiteral(values)
+    }
+
   private lazy val returnStmt: P[Statement] =
-    (kw("return") ~ refer(expr).?).map {
+    (kw("return") ~ returnValueExpr.?).map {
       case _ ~ value => Return(value)
     }
 
@@ -796,30 +824,49 @@ object RubySubsetParser {
       methodIdentifier
 
   private lazy val simpleStatement: P[Statement] =
-    ((returnStmt / retryStmt / logicalAssignStmt / compoundAssignStmt / constAssignStmt / multiAssignStmt / assignStmt / chainedCommandCall.map(ExprStmt(_)) / receiverCommandCall.map(ExprStmt(_)) / commandCall.map(ExprStmt(_)) / refer(expr).map(ExprStmt(_))) ~ (inlineSpacing ~> modifierSuffix).?).map {
-      case stmt ~ Some(modifier) => modifier(stmt)
-      case stmt ~ None => stmt
-    }
+    returnStmt /
+      retryStmt /
+      logicalAssignStmt /
+      compoundAssignStmt /
+      constAssignStmt /
+      multiAssignStmt /
+      assignStmt /
+      chainedCommandCall.map(ExprStmt(_)) /
+      receiverCommandCall.map(ExprStmt(_)) /
+      commandCall.map(ExprStmt(_)) /
+      refer(expr).map(ExprStmt(_))
 
-  private lazy val statement: P[Statement] =
-    refer(beginStmt) /
-    refer(whileStmt) /
-    refer(untilStmt) /
-    refer(forStmt) /
-    refer(caseStmt) /
-    refer(defStmt) /
+  private lazy val statementBase: P[Statement] =
+    (
+      refer(beginStmt) /
+      refer(whileStmt) /
+      refer(untilStmt) /
+      refer(forStmt) /
+      refer(caseStmt) /
+      refer(defStmt) /
       refer(singletonClassStmt) /
       refer(classStmt) /
       refer(moduleStmt) /
       refer(ifStmt) /
       refer(unlessStmt) /
       simpleStatement
+    )
+
+  private lazy val statement: P[Statement] =
+    (statementBase ~ (inlineSpacing ~> modifierSuffix).?).map {
+      case stmt ~ Some(modifier) => modifier(stmt)
+      case stmt ~ None => stmt
+    }
 
   private lazy val topLevelStatements: P[List[Statement]] =
     sepBy0(refer(statement), statementSep)
 
   private def blockStatementsUntil(stop: P[Any]): P[List[Statement]] =
-    (stop.and ~> success(Nil)) / sepBy1(refer(statement), statementSep)
+    (stop.and ~> success(Nil)) /
+      ((refer(statement) ~ (statementSep.+ ~> refer(blockStatementsUntil(stop))).?).map {
+        case stmt ~ Some(rest) => stmt :: rest
+        case stmt ~ None => List(stmt)
+      })
 
   private lazy val blockStatements: P[List[Statement]] =
     blockStatementsUntil(kw("end"))
@@ -860,17 +907,25 @@ object RubySubsetParser {
       defName ~
       (params / bareParams).? ~
       statementSep.* ~
-      blockStatementsUntil(kw("ensure") / kw("end")) ~
+      blockStatementsUntil(kw("rescue") / kw("else") / kw("ensure") / kw("end")) ~
+      statementSep.* ~
+      rescueClause.* ~
+      statementSep.* ~
+      (kw("else") ~ statementSep.* ~ blockStatementsUntil(kw("ensure") / kw("end"))).? ~
       statementSep.* ~
       (kw("ensure") ~ statementSep.* ~ blockStatementsUntil(kw("end"))).? ~
       statementSep.* ~
       kw("end")
     ).map {
-      case _ ~ name ~ maybeParams ~ _ ~ body ~ _ ~ ensureOpt ~ _ ~ _ =>
-        val statements = ensureOpt match {
-          case Some(_ ~ _ ~ ensureBody) => List(BeginRescue(body, Nil, Nil, ensureBody))
-          case None => body
-        }
+      case _ ~ name ~ maybeParams ~ _ ~ body ~ _ ~ rescues ~ _ ~ elseOpt ~ _ ~ ensureOpt ~ _ ~ _ =>
+        val elseBody = elseOpt.map { case _ ~ _ ~ statements => statements }.getOrElse(Nil)
+        val ensureBody = ensureOpt.map { case _ ~ _ ~ statements => statements }.getOrElse(Nil)
+        val statements =
+          if(rescues.nonEmpty || elseBody.nonEmpty || ensureBody.nonEmpty) {
+            List(BeginRescue(body, rescues, elseBody, ensureBody))
+          } else {
+            body
+          }
         Def(name, maybeParams.getOrElse(Nil), statements)
     }
 
@@ -935,6 +990,24 @@ object RubySubsetParser {
       (kw("unless") ~ refer(expr)).map {
         case _ ~ condition =>
           (stmt: Statement) => UnlessExpr(condition, List(stmt), Nil)
+      } /
+      (kw("rescue") ~ refer(expr)).map {
+        case _ ~ fallback =>
+          (stmt: Statement) =>
+            BeginRescue(
+              List(stmt),
+              List(RescueClause(Nil, None, List(ExprStmt(fallback)))),
+              Nil,
+              Nil
+            )
+      } /
+      (kw("while") ~ refer(expr)).map {
+        case _ ~ condition =>
+          (stmt: Statement) => WhileExpr(condition, List(stmt))
+      } /
+      (kw("until") ~ refer(expr)).map {
+        case _ ~ condition =>
+          (stmt: Statement) => UntilExpr(condition, List(stmt))
       }
 
   private lazy val ifTail: P[List[Statement]] =
