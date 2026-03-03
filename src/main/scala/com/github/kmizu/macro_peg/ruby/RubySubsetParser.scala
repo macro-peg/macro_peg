@@ -15,14 +15,17 @@ object RubySubsetParser {
   private lazy val comment: P[Unit] =
     ("#".s ~ (!"\n".s ~ any).*).map(_ => ())
 
+  private lazy val blockComment: P[Unit] =
+    ("=begin".s ~ (!"=end".s ~ any).* ~ "=end".s).map(_ => ())
+
   private lazy val inlineSpacing: P[Unit] =
-    (horizontalSpaceChar / comment).*.void
+    (horizontalSpaceChar / comment / blockComment).*.void
 
   private lazy val spacing: P[Unit] =
-    (horizontalSpaceChar / newlineChar / comment).*.void
+    (horizontalSpaceChar / newlineChar / comment / blockComment).*.void
 
   private lazy val spacing1: P[Unit] =
-    (horizontalSpaceChar / comment).+.void
+    (horizontalSpaceChar / comment / blockComment).+.void
 
   private def token[A](parser: P[A]): P[A] =
     (parser ~ inlineSpacing).map(_._1)
@@ -168,7 +171,7 @@ object RubySubsetParser {
       case _ ~ chars ~ _ => StringLiteral(chars.mkString)
     })
 
-  private def percentStringLiteral(open: String, close: String): P[Expr] = {
+  private def percentBody(open: String, close: String): P[String] = {
     lazy val percentChunk: P[String] =
       ((open.s ~ refer(percentChunk).* ~ close.s).map {
         case openText ~ inner ~ closeText => openText + inner.mkString + closeText
@@ -176,16 +179,39 @@ object RubySubsetParser {
         ((!open.s ~ !close.s ~ any).map {
           case _ ~ _ ~ char => char
         })
-    token((("%q".s / "%".s) ~ open.s ~ percentChunk.* ~ close.s).map {
-      case _ ~ _ ~ chars ~ _ => StringLiteral(chars.mkString)
-    })
+    (open.s ~ percentChunk.* ~ close.s).map {
+      case _ ~ chars ~ _ => chars.mkString
+    }
   }
+
+  private def percentStringLiteral(open: String, close: String): P[Expr] =
+    token((("%q".s / "%Q".s / "%".s) ~ percentBody(open, close)).map {
+      case _ ~ body => StringLiteral(body)
+    })
+
+  private def percentWordArrayLiteral(open: String, close: String): P[Expr] =
+    token((("%w".s / "%W".s) ~ percentBody(open, close)).map {
+      case _ ~ body =>
+        val words =
+          body
+            .split("\\s+")
+            .toList
+            .filter(_.nonEmpty)
+            .map(word => StringLiteral(word))
+        ArrayLiteral(words)
+    })
 
   private lazy val percentQuotedStringLiteral: P[Expr] =
     percentStringLiteral("{", "}") /
       percentStringLiteral("(", ")") /
       percentStringLiteral("[", "]") /
       percentStringLiteral("<", ">")
+
+  private lazy val percentWordArray: P[Expr] =
+    percentWordArrayLiteral("{", "}") /
+      percentWordArrayLiteral("(", ")") /
+      percentWordArrayLiteral("[", "]") /
+      percentWordArrayLiteral("<", ">")
 
   private lazy val escapedRegexChar: P[String] =
     ("\\".s ~ any).map { case _ ~ c => s"\\$c" }
@@ -300,6 +326,7 @@ object RubySubsetParser {
       stringLiteral /
       singleQuotedStringLiteral /
       percentQuotedStringLiteral /
+      percentWordArray /
       regexLiteral /
       symbolLiteral /
       boolLiteral /
@@ -402,7 +429,7 @@ object RubySubsetParser {
     chainl(addSubExpr)(infix("<=") / infix(">=") / infix("<") / infix(">"))
 
   private lazy val equalityExpr: P[Expr] =
-    chainl(relationalExpr)(infix("==") / infix("!="))
+    chainl(relationalExpr)(infix("==") / infix("!=") / infix("=~") / infix("!~"))
 
   private lazy val rangeExpr: P[Expr] =
     (equalityExpr ~ ((sym("..") / sym("...")) ~ equalityExpr).?).map {

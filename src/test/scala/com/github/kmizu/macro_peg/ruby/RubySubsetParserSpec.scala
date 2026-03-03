@@ -793,5 +793,79 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses uppercase percent-Q strings") {
+      val input = "message = %Q{ENSURE\\n}"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign("message", StringLiteral("ENSURE\\n"), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses percent word-array literals") {
+      val input = "keywords = %w[break next redo]"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "keywords",
+            ArrayLiteral(List(
+              StringLiteral("break"),
+              StringLiteral("next"),
+              StringLiteral("redo")
+            ), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses regex match operators") {
+      val input = "/freebsd/ =~ RUBY_PLATFORM or skip"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            BinaryOp(
+              BinaryOp(
+                StringLiteral("freebsd", UnknownSpan),
+                "=~",
+                ConstRef(List("RUBY_PLATFORM"), UnknownSpan),
+                UnknownSpan
+              ),
+              "or",
+              LocalVar("skip", UnknownSpan),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses =begin/=end block comments as spacing") {
+      val input =
+        """=begin
+          |generated
+          |=end
+          |ok 1
+          |""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(Call(None, "ok", List(IntLiteral(1)), UnknownSpan), UnknownSpan)
+        ), UnknownSpan)
+      )
+    }
   }
 }
