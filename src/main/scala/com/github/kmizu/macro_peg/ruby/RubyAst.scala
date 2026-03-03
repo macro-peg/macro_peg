@@ -15,6 +15,7 @@ object RubyAst {
 
   case class ExprStmt(expr: Expr, span: Span = UnknownSpan) extends Statement
   case class Assign(name: String, value: Expr, span: Span = UnknownSpan) extends Statement
+  case class MultiAssign(names: List[String], value: Expr, span: Span = UnknownSpan) extends Statement
   case class Return(value: Option[Expr], span: Span = UnknownSpan) extends Statement
   case class RescueClause(exceptionClasses: List[Expr], variable: Option[String], body: List[Statement], span: Span = UnknownSpan) extends Node
   case class BeginRescue(body: List[Statement], rescues: List[RescueClause], elseBody: List[Statement], ensureBody: List[Statement], span: Span = UnknownSpan) extends Statement

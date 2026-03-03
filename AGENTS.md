@@ -85,3 +85,11 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - `wn > 0 ? wn : 1024` 向けに三項演算子を追加。性能回帰を避けるため、`conditionalExpr` は再パースを避ける左因子化実装にした。
 - `timeout&.*(timeout_scale)` のために safe navigation `&.` と演算子メソッド suffix（`*` など）を追加。対応ケースを `RubySubsetParserSpec` へ追加済み。
 - 回帰確認として `sbt test` 全パス、corpus は最新で `24.25% (73/301)`。`bootstraptest/runner.rb` は依然 `BT = Class.new(bt) do ...` 起点で失敗しており、次の掘りポイントとして継続調査中。
+- `runner.rb` 掘りの続きとして、`BT = ...` 定数代入を追加しつつ、誤爆しないように `constAssignStmt` を `=` 先読み付きに修正。`BT.tty = ... if ...` のような定数receiver代入も回帰テストで固定した。
+- heredoc前処理を `<<~` だけでなく `<<-` / `<<ID` まで拡張し、dash heredoc の回帰テストを追加。`not` 単項演算子、`nil?` のような予約語ベースpunctuated method 受理、`[]` への `=`/`||=` も対応した。
+- 補間付きダブルクォート文字列（`#{...}` 内に `"` を含むケース）と backtick 文字列（`` `...` ``）を追加。`writer.write_object({...})` 向けに multiline hash entry の改行処理も修正した。
+- `do ... ensure ... end` / `def ... ensure ... end` の bare ensure を `BeginRescue(..., ensureBody=...)` へ正規化する形で実装。加えて `faildesc, t = super` 用に `MultiAssign` AST+parser、`&:kill` の symbol block-pass、bare def params、`*args` / `**opts` と call 側 splat も追加した。
+- `(@count += 1)` のような式文脈での複合代入を `AssignExpr` 化して通過。`sbt test` は全件成功を維持した一方、full corpus は今回再計測でも `24.25% (73/301)` のままで、`bootstraptest/runner.rb` / `part_after_main` は未対応構文（class `Assertion` 周辺）で引き続き詰まっている。
+- 続きで `BT.columns > 0` / `e and BT.columns > 0` が落ちる回帰を修正。演算子前空白の扱いを見直し、`RubySubsetParserSpec` に比較式・`and` 連鎖の回帰テストを追加した。
+- `puts tests.map {|path| File.basename(path) }.inspect` のような「空白あり brace-block suffix + chain」を通すため、`blockAttachSuffix` の空白吸収と `braceBlock` の閉じ波括弧手前空白を対応。関連テスト（command arg / `Thread.new{ r.read }`）を追加。
+- `sbt test` と `RubySubsetParserSpec` は全パス維持。ただし full corpus は現時点で `21.26% (64/301, timeout=1000ms)` まで低下しており、`runner.rb` は依然 timeout。性能回帰と `class Assertion` 以降の解析継続が次タスク。
