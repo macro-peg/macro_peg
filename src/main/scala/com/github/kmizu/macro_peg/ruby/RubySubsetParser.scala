@@ -290,8 +290,14 @@ object RubySubsetParser {
       case _ ~ elements ~ _ => ArrayLiteral(elements)
     }
 
+  private lazy val labelHashEntry: P[(Expr, Expr)] =
+    ((identifierNoSpace <~ sym(":")) ~ refer(expr)).map {
+      case name ~ value => SymbolLiteral(name, UnknownSpan) -> value
+    }
+
   private lazy val hashEntry: P[(Expr, Expr)] =
-    (refer(expr) ~ sym("=>") ~ refer(expr)).map { case key ~ _ ~ value => key -> value }
+    labelHashEntry /
+      (refer(expr) ~ sym("=>") ~ refer(expr)).map { case key ~ _ ~ value => key -> value }
 
   private lazy val hashLiteral: P[Expr] =
     (sym("{") ~ sepBy0(hashEntry, sym(",")) ~ sym("}")).map {
@@ -307,8 +313,14 @@ object RubySubsetParser {
   private lazy val blockPassArgExpr: P[Expr] =
     (sym("&") ~ identifier).map { case _ ~ name => LocalVar(s"&$name") }
 
+  private lazy val keywordArgExpr: P[Expr] =
+    ((identifierNoSpace <~ sym(":")) ~ refer(expr)).map {
+      case name ~ value =>
+        HashLiteral(List(SymbolLiteral(name, UnknownSpan) -> value))
+    }
+
   private lazy val callArgExpr: P[Expr] =
-    blockPassArgExpr / refer(expr)
+    blockPassArgExpr / keywordArgExpr / refer(expr)
 
   private lazy val functionCall: P[Expr] =
     (methodIdentifier ~ callArgs).map { case name ~ args => Call(None, name, args) }

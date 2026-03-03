@@ -915,5 +915,48 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
         ), UnknownSpan)
       )
     }
+
+    it("parses label-style hash entries") {
+      val input = "opts = { frozen_string_literal: true, mode: :strict }"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          Assign(
+            "opts",
+            HashLiteral(List(
+              SymbolLiteral("frozen_string_literal", UnknownSpan) -> BoolLiteral(true, UnknownSpan),
+              SymbolLiteral("mode", UnknownSpan) -> SymbolLiteral("strict", UnknownSpan)
+            ), UnknownSpan),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses call arguments with keyword labels") {
+      val input = """Prism.parse("1", command_line: "p", line: 4)"""
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(
+              Some(ConstRef(List("Prism"), UnknownSpan)),
+              "parse",
+              List(
+                StringLiteral("1", UnknownSpan),
+                HashLiteral(List(SymbolLiteral("command_line", UnknownSpan) -> StringLiteral("p", UnknownSpan)), UnknownSpan),
+                HashLiteral(List(SymbolLiteral("line", UnknownSpan) -> IntLiteral(4, UnknownSpan)), UnknownSpan)
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
   }
 }

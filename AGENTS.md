@@ -68,3 +68,5 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - Ruby本家 corpus を再計測して、成功率が `12.62% (38/301)` → `13.95% (42/301)` に改善。`test_massign.rb` の先頭詰まり（`=begin`）を解消できた。
 - さらに `%r{...}` / `%r"..."` 正規表現リテラル、`or` の改行継続、`or` 右辺での command-style call を追加。`RubySubsetParserSpec` に multiline `or` と `%r` のテストを足して回帰確認。
 - corpus 成功率を `13.95% (42/301)` から `14.95% (45/301)` へ更新。未対応構文まで進んだ結果、`test_eval.rb` は即失敗から timeout に遷移したので次段で絞り込み予定。
+- 次段で keyword 系を拡張し、`foo: 1` 形式の label hash entry と call 引数の keyword label（`f(x: 1)` / `f x: 1`）を追加。Prism系で多い `command_line: "p"` 形に対応する土台を作った。
+- `RubySubsetParserSpec` に label hash / keyword arg の回帰テストを追加し、corpus 成功率を `14.95% (45/301)` から `15.61% (47/301)` へ改善。
