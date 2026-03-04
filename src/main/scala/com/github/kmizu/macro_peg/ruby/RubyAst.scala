@@ -27,7 +27,7 @@ object RubyAst {
   case class SingletonClassDef(receiver: Expr, body: List[Statement], span: Span = UnknownSpan) extends Statement
   case class ModuleDef(name: String, body: List[Statement], span: Span = UnknownSpan) extends Statement
 
-  case class IntLiteral(value: Long, span: Span = UnknownSpan) extends Expr
+  case class IntLiteral(value: BigInt, span: Span = UnknownSpan) extends Expr
   case class FloatLiteral(value: Double, span: Span = UnknownSpan) extends Expr
   case class StringLiteral(value: String, span: Span = UnknownSpan) extends Expr
   case class SymbolLiteral(value: String, span: Span) extends Expr

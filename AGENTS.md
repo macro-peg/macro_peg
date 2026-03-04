@@ -85,6 +85,19 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - `wn > 0 ? wn : 1024` 向けに三項演算子を追加。性能回帰を避けるため、`conditionalExpr` は再パースを避ける左因子化実装にした。
 - `timeout&.*(timeout_scale)` のために safe navigation `&.` と演算子メソッド suffix（`*` など）を追加。対応ケースを `RubySubsetParserSpec` へ追加済み。
 - 回帰確認として `sbt test` 全パス、corpus は最新で `24.25% (73/301)`。`bootstraptest/runner.rb` は依然 `BT = Class.new(bt) do ...` 起点で失敗しており、次の掘りポイントとして継続調査中。
+
+### 2026-03-04
+- コウタから「根本的にカバレッジを上げる」「節目で `parse.y` も見て全体構造を把握する」という方針をもらって、まず `parse.y` の `stmt/expr/command/arg/primary/lambda` を再確認してから対応順を決めた。
+- `commandArgs` 周りの回帰（`spacing` を広く取りすぎることでバックトラックが増える問題）を修正して、corpus 成功率を `22.92% (69/301)` から `25.58% (77/301)` に戻した。
+- その後、literal と演算系をまとめて底上げした：
+  - `%i/%I` symbol array
+  - 基数付き・アンダースコア付き整数（`0b/0o/0d/0x`, `1_000`）
+  - `IntLiteral` を `BigInt` 化して巨大整数での `NumberFormatException` を解消
+  - `**`, `&`, `|`, `^`, `~`, `===`, `<=>` などの式演算を拡張
+  - 演算子/サフィックス付き symbol literal（`:!=`, `:<=`, `:frozen?`）と補間付き symbol（`:"test_#{path}"`）を追加
+- `kw(...)` の単語境界不足で `define_method` を `def` と誤認する根本バグを修正（`<~ !identCont`）。`do ... end` の `end` 吸い込みが減り、`dump_test.rb` などの落ち方を改善。
+- `name:` と `::` の競合（`Test::Unit` を keyword label 誤認）を `labelColon` で分離し、deep const path 引数（`extend Test::Unit::Assertions`）を通るようにした。
+- 最終的に `sbt test` は全 `165` テスト成功、corpus は `27.91% (84/301)` まで改善（前回 `24.25%` から `+11` ファイル）。
 - `runner.rb` 掘りの続きとして、`BT = ...` 定数代入を追加しつつ、誤爆しないように `constAssignStmt` を `=` 先読み付きに修正。`BT.tty = ... if ...` のような定数receiver代入も回帰テストで固定した。
 - heredoc前処理を `<<~` だけでなく `<<-` / `<<ID` まで拡張し、dash heredoc の回帰テストを追加。`not` 単項演算子、`nil?` のような予約語ベースpunctuated method 受理、`[]` への `=`/`||=` も対応した。
 - 補間付きダブルクォート文字列（`#{...}` 内に `"` を含むケース）と backtick 文字列（`` `...` ``）を追加。`writer.write_object({...})` 向けに multiline hash entry の改行処理も修正した。
