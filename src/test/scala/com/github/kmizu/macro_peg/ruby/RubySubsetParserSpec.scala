@@ -426,6 +426,12 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(parsed.isRight)
     }
 
+    it("parses block-local parameters after semicolon") {
+      val input = "tap {|;x| x = x; break local_variables}"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+    }
+
     it("parses block keyword defaults and trailing comma in params") {
       val input = "categories.map {|category, str: \"foo\", num: 424242, | [category, str, num] }"
       val parsed = RubySubsetParser.parse(input)
@@ -908,6 +914,12 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses percent-quoted strings with pipe delimiters") {
+      val input = """assert_equal('u', %Q|\u{FC}|)"""
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+    }
+
     it("parses bracket call with keyword label arguments") {
       val input = "paths = Dir[glob_pattern, base: BASE]"
       val parsed = RubySubsetParser.parse(input)
@@ -1173,6 +1185,12 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(parsed.isRight)
     }
 
+    it("parses alias for power operator method name") {
+      val input = "class C; alias ** +; end"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+    }
+
     it("parses instance/class/global variables and assignments") {
       val input =
         """@x = 1
@@ -1204,6 +1222,12 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
           Assign("status", GlobalVar("$?", UnknownSpan), UnknownSpan)
         ), UnknownSpan)
       )
+    }
+
+    it("parses unicode local variable names") {
+      val input = "α = 1 or flunk"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
     }
 
     it("parses dashed special global variables like $-0") {
@@ -1730,6 +1754,19 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses chained receiver assignment") {
       val input = "parser.diagnostics.all_errors_are_fatal = true"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses consecutive opposite-side division expressions") {
+      val input =
+        """class X
+          |  def t
+          |    c = SimpleRat(1,3)
+          |    assert_equal(SimpleRat(1,6), c / 2)
+          |    assert_equal(SimpleRat(6,1), 2 / c)
+          |  end
+          |end
+          |""".stripMargin
       assert(RubySubsetParser.parse(input).isRight)
     }
 
@@ -2271,6 +2308,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses shorthand label-style hash entries") {
+      val input = "assert_equal({x: 1, y: 2}, {x:, y:})"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses multiline hash entries with nested hash values") {
       val input =
         """payload = {
@@ -2314,6 +2356,54 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
                 StringLiteral("1", UnknownSpan),
                 HashLiteral(List(SymbolLiteral("command_line", UnknownSpan) -> StringLiteral("p", UnknownSpan)), UnknownSpan),
                 HashLiteral(List(SymbolLiteral("line", UnknownSpan) -> IntLiteral(4, UnknownSpan)), UnknownSpan)
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses call arguments with reserved keyword labels") {
+      val input = """Time.new(2021, 12, 25, in: "+09:00")"""
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(
+              Some(ConstRef(List("Time"), UnknownSpan)),
+              "new",
+              List(
+                IntLiteral(2021, UnknownSpan),
+                IntLiteral(12, UnknownSpan),
+                IntLiteral(25, UnknownSpan),
+                HashLiteral(List(SymbolLiteral("in", UnknownSpan) -> StringLiteral("+09:00", UnknownSpan)), UnknownSpan)
+              ),
+              UnknownSpan
+            ),
+            UnknownSpan
+          )
+        ), UnknownSpan)
+      )
+    }
+
+    it("parses call arguments with shorthand keyword labels") {
+      val input = "f(x:, y:)"
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      val ast = parsed.toOption.get
+      assert(
+        ast == Program(List(
+          ExprStmt(
+            Call(
+              None,
+              "f",
+              List(
+                HashLiteral(List(SymbolLiteral("x", UnknownSpan) -> LocalVar("x", UnknownSpan)), UnknownSpan),
+                HashLiteral(List(SymbolLiteral("y", UnknownSpan) -> LocalVar("y", UnknownSpan)), UnknownSpan)
               ),
               UnknownSpan
             ),
@@ -2879,6 +2969,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(RubySubsetParser.parse(input).isRight)
     }
 
+    it("parses parenthesized semicolon expressions before postfix until") {
+      val input = "(Thread.pass; sleep 0.01) until q.size == 0"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses for...in...do...end") {
       val input = "for i in 1..10 do\n  puts i\nend"
       assert(RubySubsetParser.parse(input).isRight)
@@ -2990,6 +3085,21 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses question-mark character literal range in call args") {
       val input = "l.zip(?a..?c)"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses unicode escaped question-mark character literal") {
+      val input = """assert_equal(?\u0041, ?A)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses hex escaped question-mark character literal") {
+      val input = """assert_equal(?\x79, ?y)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses octal escaped question-mark character literal") {
+      val input = """assert_equal(?\000, ?\u{0})"""
       assert(RubySubsetParser.parse(input).isRight)
     }
 

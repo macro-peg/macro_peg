@@ -210,3 +210,13 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
   - case `in` で rightward assignment pattern（`in 0 => a`）
 - 検証は `sbt test` 全 `257` テスト成功。
 - full corpus 5s の再計測（`-Xmx8g -XX:+UseG1GC`）で `72.09% (217/301)` に到達（直前安定値 `71.43% (215/301)` から `+2` files）。
+- 次サイクルで Ruby 構文をまとめて拡張:
+  - reserved keyword label（`in:` など）を call/hash/param で受理
+  - shorthand label（`{x:, y:}` / `f(x:, y:)`）を追加
+  - `%Q|...|` を含む pipe delimiter 形式の `%Q/%q/%w/%W/%i/%I/%r/%x` を受理
+  - `alias ** +`、`{|;x| ...}` block-local params、`(a; b) until ...` を追加
+  - `?\uXXXX` / `?\u{...}` / `?\xNN` / `?\000` の文字リテラルを受理
+  - 非ASCIIローカル変数（例: `α = 1`）を受理（巨大文字レンジは使わず、ASCII否定lookaheadで実装）
+- 追加回帰テストを `RubySubsetParserSpec` に実装し、`sbt test` 全 `269` テスト成功を確認。
+- 旧 fail 83 本を再計測して `success=23/83`（前回 `22/83` から `+1`）に改善。`test_unicode_escape.rb` を新規回復し、`now2` 比で回帰は 0 を維持。
+- 代表的な回復ファイルは `test_rational.rb` / `test_thread_queue.rb` / `test_variable.rb` / `test_unicode_escape.rb` など。残課題は `test_time.rb`（5s timeout）と、command-style と `/` 正規表現曖昧性が絡む一部クラスタ（`test_integer_comb.rb` 起点の周辺）を次段で継続。

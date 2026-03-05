@@ -61,11 +61,19 @@ object RubySubsetParser {
   private lazy val symbolPrefix: P[String] =
     ":".s <~ !":".s
 
+  private lazy val asciiChar: P[String] =
+    range('\u0000' to '\u007f')
+
+  private lazy val nonAsciiChar: P[String] =
+    (!asciiChar.and ~ any).map(_._2)
+
   private lazy val identStart: P[String] =
-    range('a' to 'z', 'A' to 'Z', '_' to '_')
+    range('a' to 'z', 'A' to 'Z', '_' to '_') /
+      nonAsciiChar
 
   private lazy val identCont: P[String] =
-    range('a' to 'z', 'A' to 'Z', '0' to '9', '_' to '_')
+    range('a' to 'z', 'A' to 'Z', '0' to '9', '_' to '_') /
+      nonAsciiChar
 
   private lazy val identifierRaw: P[String] =
     (identStart ~ identCont.*).map { case h ~ t => h + t.mkString }
@@ -103,6 +111,9 @@ object RubySubsetParser {
 
   private lazy val identifierNoSpace: P[String] =
     (!reservedWord ~ identifierRaw).map(_._2)
+
+  private lazy val labelNameNoSpace: P[String] =
+    identifierRaw / reservedWord
 
   private lazy val identifier: P[String] =
     token(identifierNoSpace)
@@ -276,6 +287,42 @@ object RubySubsetParser {
       case _ ~ c => c
     }
 
+  private lazy val hexDigit: P[String] =
+    range('0' to '9', 'a' to 'f', 'A' to 'F')
+
+  private def codePointString(hex: String): String =
+    Try(Integer.parseInt(hex, 16))
+      .toOption
+      .map(Character.toChars)
+      .map(_.mkString)
+      .getOrElse("")
+
+  private def codePointStringFromBase(digits: String, base: Int): String =
+    Try(Integer.parseInt(digits, base))
+      .toOption
+      .map(Character.toChars)
+      .map(_.mkString)
+      .getOrElse("")
+
+  private lazy val unicodeEscapedChar: P[String] =
+    ("\\u".s ~ hexDigit ~ hexDigit ~ hexDigit ~ hexDigit).map {
+      case _ ~ a ~ b ~ c ~ d => codePointString(a + b + c + d)
+    } /
+      ("\\".s ~ range('0' to '7') ~ range('0' to '7').? ~ range('0' to '7').?).map {
+        case _ ~ first ~ second ~ third =>
+          val digits = first + second.getOrElse("") + third.getOrElse("")
+          codePointStringFromBase(digits, 8)
+      } /
+      ("\\x".s ~ hexDigit ~ hexDigit).map {
+        case _ ~ a ~ b => codePointString(a + b)
+      } /
+      ("\\u{".s ~ hexDigit.+ ~ "}".s).map {
+        case _ ~ digits ~ _ => codePointString(digits.mkString)
+      }
+
+  private lazy val escapedCharLiteralChar: P[String] =
+    unicodeEscapedChar / escapedChar / any
+
   private lazy val escapedAnyChar: P[String] =
     ("\\".s ~ any).map { case _ ~ c => s"\\$c" }
 
@@ -418,6 +465,7 @@ object RubySubsetParser {
       percentStringLiteral("(", ")") /
       percentStringLiteral("[", "]") /
       percentStringLiteral("<", ">") /
+      percentStringLiteralSimple("|") /
       percentStringLiteralSimple("\"") /
       percentStringLiteralSimple("'") /
       percentStringLiteralSimple("/")
@@ -444,6 +492,7 @@ object RubySubsetParser {
       percentWordArrayLiteral("(", ")") /
       percentWordArrayLiteral("[", "]") /
       percentWordArrayLiteral("<", ">") /
+      percentWordArrayLiteralSimple("|") /
       percentWordArrayLiteralSimple("\"") /
       percentWordArrayLiteralSimple("'") /
       percentWordArrayLiteralSimple("/")
@@ -453,6 +502,7 @@ object RubySubsetParser {
       percentSymbolArrayLiteral("(", ")") /
       percentSymbolArrayLiteral("[", "]") /
       percentSymbolArrayLiteral("<", ">") /
+      percentSymbolArrayLiteralSimple("|") /
       percentSymbolArrayLiteralSimple("\"") /
       percentSymbolArrayLiteralSimple("'") /
       percentSymbolArrayLiteralSimple("/")
@@ -472,6 +522,7 @@ object RubySubsetParser {
       percentRegexLiteral("(", ")") /
       percentRegexLiteral("[", "]") /
       percentRegexLiteral("<", ">") /
+      percentRegexLiteralSimple("|") /
       percentRegexLiteralSimple("\"") /
       percentRegexLiteralSimple("'") /
       percentRegexLiteralSimple("/")
@@ -491,6 +542,7 @@ object RubySubsetParser {
       percentCommandLiteral("(", ")") /
       percentCommandLiteral("[", "]") /
       percentCommandLiteral("<", ">") /
+      percentCommandLiteralSimple("|") /
       percentCommandLiteralSimple("\"") /
       percentCommandLiteralSimple("'") /
       percentCommandLiteralSimple("/")
@@ -499,7 +551,9 @@ object RubySubsetParser {
     ("\\".s ~ any).map { case _ ~ c => s"\\$c" }
 
   private lazy val plainRegexChar: P[String] =
-    (!"/".s ~ any).map(_._2)
+    (!"/".s ~ !"\n".s ~ !"\r".s ~ any).map {
+      case _ ~ _ ~ _ ~ c => c
+    }
 
   private lazy val regexLiteral: P[Expr] =
     percentRegex /
@@ -508,6 +562,7 @@ object RubySubsetParser {
       })
 
   private lazy val symbolOperatorNameNoSpace: P[String] =
+    "**".s /
     "===".s /
       "<=>".s /
       "=~".s /
@@ -621,9 +676,15 @@ object RubySubsetParser {
     }
 
   private lazy val parenExpr: P[Expr] =
-    (sym("(") ~ exprWithPostfixModifier.? ~ sym(")")).map {
+    (sym("(") ~ parenExprBody.? ~ sym(")")).map {
       case _ ~ Some(e) ~ _ => e
       case _ ~ None ~ _ => NilLiteral()
+    }
+
+  private lazy val parenExprBody: P[Expr] =
+    (exprWithPostfixModifier ~ (sym(";") ~ exprWithPostfixModifier).*).map {
+      case first ~ rest =>
+        rest.lastOption.map(_._2).getOrElse(first)
     }
 
   private lazy val spacedExpr: P[Expr] =
@@ -659,13 +720,24 @@ object RubySubsetParser {
     }
 
   private lazy val labelHashEntry: P[(Expr, Expr)] =
-    ((identifierNoSpace <~ labelColon) ~ refer(expr)).map {
+    ((labelNameNoSpace <~ labelColon) ~ refer(expr).cut).map {
       case name ~ value => SymbolLiteral(name, UnknownSpan) -> value
+    }
+
+  private lazy val shorthandLabelHashTail: P[Any] =
+    sym(",").and /
+      sym("}").and /
+      newlineChar.and
+
+  private lazy val shorthandLabelHashEntry: P[(Expr, Expr)] =
+    ((labelNameNoSpace <~ labelColon) <~ (inlineSpacing ~> shorthandLabelHashTail)).map { name =>
+      SymbolLiteral(name, UnknownSpan) -> LocalVar(name, UnknownSpan)
     }
 
   private lazy val hashEntry: P[(Expr, Expr)] =
     anonymousKeywordSplatExpr.map(value => SymbolLiteral("**", UnknownSpan) -> value) /
       (sym("**") ~ refer(expr)).map { case _ ~ value => SymbolLiteral("**", UnknownSpan) -> value } /
+      shorthandLabelHashEntry /
       labelHashEntry /
       (refer(expr) ~ sym("=>") ~ refer(expr)).map { case key ~ _ ~ value => key -> value }
 
@@ -725,9 +797,20 @@ object RubySubsetParser {
     (sym("*") ~ refer(expr)).map(_._2)
 
   private lazy val keywordArgExpr: P[Expr] =
-    ((identifierNoSpace <~ labelColon) ~ refer(expr)).map {
+    ((labelNameNoSpace <~ labelColon) ~ refer(expr).cut).map {
       case name ~ value =>
         HashLiteral(List(SymbolLiteral(name, UnknownSpan) -> value))
+    }
+
+  private lazy val shorthandKeywordArgTail: P[Any] =
+    sym(",").and /
+      sym(")").and /
+      sym("]").and /
+      newlineChar.and
+
+  private lazy val shorthandKeywordArgExpr: P[Expr] =
+    ((labelNameNoSpace <~ labelColon) <~ (inlineSpacing ~> shorthandKeywordArgTail)).map { name =>
+      HashLiteral(List(SymbolLiteral(name, UnknownSpan) -> LocalVar(name, UnknownSpan)))
     }
 
   private lazy val hashRocketArgKeyExpr: P[Expr] =
@@ -742,10 +825,10 @@ object RubySubsetParser {
     (sym("...") <~ forwardingArgTail).map(_ => LocalVar("..."))
 
   private lazy val callArgExpr: P[Expr] =
-    forwardingArgExpr / blockPassArgExpr / anonymousKeywordSplatExpr / doubleSplatArgExpr / splatArgExpr / keywordArgExpr / hashRocketArgExpr / refer(expr)
+    forwardingArgExpr / blockPassArgExpr / anonymousKeywordSplatExpr / doubleSplatArgExpr / splatArgExpr / shorthandKeywordArgExpr / keywordArgExpr / hashRocketArgExpr / refer(expr)
 
   private lazy val bracketArgExpr: P[Expr] =
-    blockPassArgExpr / anonymousKeywordSplatExpr / doubleSplatArgExpr / splatArgExpr / keywordArgExpr / hashRocketArgExpr / refer(expr)
+    blockPassArgExpr / anonymousKeywordSplatExpr / doubleSplatArgExpr / splatArgExpr / shorthandKeywordArgExpr / keywordArgExpr / hashRocketArgExpr / refer(expr)
 
   // NOTE: keep this tight (`foo(` only). If whitespace is allowed here, command-style
   // forms like `assert_equal (+x), y` are misread as `assert_equal(+x)`.
@@ -812,7 +895,7 @@ object RubySubsetParser {
       // NOTE: whileStmt/untilStmt NOT here — their `do` conflicts with blockAttachSuffix.cut
       integerLiteral /
       floatLiteral /
-      token(("?".s ~ !horizontalSpaceChar.and ~ !newlineChar.and ~ (escapedChar / any)).map {
+      token(("?".s ~ !horizontalSpaceChar.and ~ !newlineChar.and ~ escapedCharLiteralChar).map {
         case _ ~ _ ~ _ ~ char => StringLiteral(char)
       }) /
       adjacentStringLiteral /
@@ -863,12 +946,12 @@ object RubySubsetParser {
     (identifier ~ (sym("=") ~ blockParamDefaultExpr).?).map(_._1)
 
   private lazy val keywordParam: P[String] =
-    ((identifierNoSpace <~ labelColon) ~ refer(expr).?).map {
+    ((labelNameNoSpace <~ labelColon) ~ refer(expr).?).map {
       case name ~ _ => s"$name:"
     }
 
   private lazy val blockKeywordParam: P[String] =
-    ((identifierNoSpace <~ labelColon) ~ blockParamDefaultExpr.?).map {
+    ((labelNameNoSpace <~ labelColon) ~ blockParamDefaultExpr.?).map {
       case name ~ _ => s"$name:"
     }
 
@@ -912,7 +995,14 @@ object RubySubsetParser {
     }
 
   private lazy val blockParams: P[List[String]] =
-    sym("|") ~> (sepBy0(destructuredBlockParam / blockFormalParam, sym(",")) <~ sym(",").?) <~ sym("|")
+    (sym("|") ~>
+      ((sepBy0(destructuredBlockParam / blockFormalParam, sym(",")) ~
+        (sym(";") ~> sepBy0(identifier, sym(","))).?).map {
+        case params ~ blockLocals =>
+          params ++ blockLocals.getOrElse(Nil).map(name => s";$name")
+      } <~
+        sym(",").?) <~
+      sym("|"))
 
   private lazy val doBlock: P[Block] =
     (
