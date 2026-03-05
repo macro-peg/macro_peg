@@ -52,5 +52,52 @@ class MacroParsersAdvancedSpec extends AnyFunSpec with Diagrams {
           fail(s"unexpected parse result: $other")
       }
     }
+
+    it("detects direct non-consuming recursion with guard") {
+      object G {
+        lazy val A: P[String] = guard("A")(refer(A))
+      }
+      val failure = G.A("").asInstanceOf[ParseFailure]
+      assert(failure.message.contains("infinite recursion detected"))
+    }
+
+    it("detects indirect non-consuming recursion with guard") {
+      object G {
+        lazy val A: P[String] = guard("A")(refer(B))
+        lazy val B: P[String] = guard("B")(refer(A))
+      }
+      val failure = G.A("").asInstanceOf[ParseFailure]
+      assert(failure.message.contains("infinite recursion detected"))
+    }
+
+    it("detects direct non-consuming recursion via refer without explicit guard") {
+      object G {
+        lazy val A: P[String] = refer(A)
+      }
+      val failure = G.A("").asInstanceOf[ParseFailure]
+      assert(failure.message.contains("infinite recursion detected"))
+    }
+
+    it("detects indirect non-consuming recursion via refer without explicit guard") {
+      object G {
+        lazy val A: P[String] = refer(B)
+        lazy val B: P[String] = refer(A)
+      }
+      val failure = G.A("").asInstanceOf[ParseFailure]
+      assert(failure.message.contains("infinite recursion detected"))
+    }
+
+    it("memoizes repeated parser invocation at the same input position") {
+      var calls = 0
+      val base =
+        ("".s.map { _ =>
+          calls += 1
+          ()
+        } ~ !any).map(_ => ())
+      val memoized = base.memo
+      val parser = memoized / memoized
+      parseAll(parser, "x")
+      assert(calls == 1)
+    }
   }
 }
