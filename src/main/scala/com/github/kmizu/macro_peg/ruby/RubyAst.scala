@@ -18,17 +18,20 @@ object RubyAst {
   case class MultiAssign(names: List[String], value: Expr, span: Span = UnknownSpan) extends Statement
   case class Return(value: Option[Expr], span: Span = UnknownSpan) extends Statement
   case class RescueClause(exceptionClasses: List[Expr], variable: Option[String], body: List[Statement], span: Span = UnknownSpan) extends Node
-  case class BeginRescue(body: List[Statement], rescues: List[RescueClause], elseBody: List[Statement], ensureBody: List[Statement], span: Span = UnknownSpan) extends Statement
+  case class BeginRescue(body: List[Statement], rescues: List[RescueClause], elseBody: List[Statement], ensureBody: List[Statement], span: Span = UnknownSpan) extends Expr
   case class WhenClause(patterns: List[Expr], body: List[Statement], span: Span = UnknownSpan) extends Node
   case class Retry(span: Span = UnknownSpan) extends Statement
   case class ForIn(name: String, iterable: Expr, body: List[Statement], span: Span = UnknownSpan) extends Statement
   case class Def(name: String, params: List[String], body: List[Statement], span: Span = UnknownSpan) extends Statement
   case class ClassDef(name: String, body: List[Statement], span: Span = UnknownSpan, superClass: Option[Expr] = None) extends Statement
   case class SingletonClassDef(receiver: Expr, body: List[Statement], span: Span = UnknownSpan) extends Statement
+  case class SingletonClassExpr(receiver: Expr, body: List[Statement], span: Span = UnknownSpan) extends Expr
   case class ModuleDef(name: String, body: List[Statement], span: Span = UnknownSpan) extends Statement
 
   case class IntLiteral(value: BigInt, span: Span = UnknownSpan) extends Expr
   case class FloatLiteral(value: Double, span: Span = UnknownSpan) extends Expr
+  case class RationalLiteral(value: Expr, span: Span = UnknownSpan) extends Expr
+  case class ImaginaryLiteral(value: Expr, span: Span = UnknownSpan) extends Expr
   case class StringLiteral(value: String, span: Span = UnknownSpan) extends Expr
   case class SymbolLiteral(value: String, span: Span) extends Expr
   case class BoolLiteral(value: Boolean, span: Span = UnknownSpan) extends Expr

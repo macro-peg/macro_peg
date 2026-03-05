@@ -1,10 +1,27 @@
 package com.github.kmizu.macro_peg.combinator
 
+import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.HashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 object MacroParsers {
   type Input = String
   case class ~[+A, +B](_1: A, _2: B)
+
+  private final case class RecursionFrame(rule: String, remaining: Int)
+  private final class RecursionContext(val inputLength: Int) {
+    val stack: ArrayBuffer[RecursionFrame] = ArrayBuffer.empty
+    val activeCounts: HashMap[RecursionFrame, Int] = HashMap.empty
+    val visits: HashMap[RecursionFrame, Int] = HashMap.empty
+    val memo: HashMap[(Int, Int), MemoState] = HashMap.empty
+  }
+  private sealed trait MemoState
+  private case object MemoInProgress extends MemoState
+  private final case class MemoDone(result: ParseResult[Any]) extends MemoState
+  private val recursionContextTL: ThreadLocal[RecursionContext] = new ThreadLocal[RecursionContext]()
+  private val referenceParserId: AtomicInteger = new AtomicInteger(0)
+  private val memoParserId: AtomicInteger = new AtomicInteger(0)
 
   abstract sealed class ParseResult[+T] {
     /**
@@ -75,6 +92,109 @@ object MacroParsers {
 
     /** Push trace label to failures for debugging nested parser calls. */
     def trace(name: String): MacroParser[T] = TraceParser(name, this)
+
+    /** Memoize this parser by (parser-id, input-position) within a single parse run. */
+    def memo: MacroParser[T] = MemoParser(this)
+  }
+
+  private def envEnabled(name: String): Boolean =
+    Option(System.getenv(name)).contains("1")
+
+  private def recursionRepeatThreshold: Int =
+    Option(System.getenv("RUBY_PARSER_RECURSION_THRESHOLD"))
+      .flatMap(_.toIntOption)
+      .filter(_ >= 2)
+      .getOrElse(2)
+
+  private def recursionHardFail: Boolean =
+    envEnabled("RUBY_PARSER_RECURSION_HARD_FAIL")
+
+  private def recursionTraceEnabled: Boolean =
+    envEnabled("RUBY_PARSER_TRACE_RECURSION")
+
+  private def recursionTracePathEnabled: Boolean =
+    envEnabled("RUBY_PARSER_TRACE_PATH")
+
+  private def recursionVisitThreshold: Int =
+    Option(System.getenv("RUBY_PARSER_VISIT_THRESHOLD"))
+      .flatMap(_.toIntOption)
+      .filter(_ >= 1)
+      .getOrElse(0)
+
+  private def frameOffset(ctx: RecursionContext, frame: RecursionFrame): Int =
+    ctx.inputLength - frame.remaining
+
+  private def formatCycle(ctx: RecursionContext, cycle: List[RecursionFrame]): String =
+    cycle.map { frame =>
+      s"${frame.rule}(${frameOffset(ctx, frame)})"
+    }.mkString(" -> ")
+
+  private def withRecursionFrame[T](name: String, input: Input)(body: => ParseResult[T]): ParseResult[T] = {
+    val context = recursionContextTL.get()
+    if(context == null) {
+      val previous = recursionContextTL.get()
+      recursionContextTL.set(new RecursionContext(input.length))
+      try withRecursionFrame(name, input)(body)
+      finally recursionContextTL.set(previous)
+    } else {
+      val frame = RecursionFrame(name, input.length)
+      if(recursionVisitThreshold > 0) {
+        val nextCount = context.visits.getOrElse(frame, 0) + 1
+        context.visits.update(frame, nextCount)
+        if(nextCount >= recursionVisitThreshold) {
+          val offset = frameOffset(context, frame)
+          val currentPath = formatCycle(context, context.stack.toList :+ frame)
+          val message =
+            if(recursionTracePathEnabled) {
+              s"suspicious repeated visits detected: ${name}($offset) count=$nextCount path=$currentPath"
+            } else {
+              s"suspicious repeated visits at ${name}($offset), count=$nextCount"
+            }
+          if(recursionTraceEnabled) {
+            Console.err.println(s"[macro-peg] $message")
+          }
+          return ParseFailure(
+            message = message,
+            next = input,
+            committed = recursionHardFail,
+            expected = List("rule should make progress or commit earlier")
+          )
+        }
+      }
+      val occurrences = context.activeCounts.getOrElse(frame, 0) + 1
+      if(occurrences >= recursionRepeatThreshold) {
+        val cycleStart = context.stack.lastIndexWhere(_ == frame)
+        val cycleFrames =
+          if(cycleStart >= 0) context.stack.drop(cycleStart).toList :+ frame
+          else List(frame)
+        val offset = frameOffset(context, frame)
+        val message =
+          if(recursionTracePathEnabled) {
+            s"infinite recursion detected: ${formatCycle(context, cycleFrames)}"
+          } else {
+            s"infinite recursion detected at ${name}($offset)"
+          }
+        if(recursionTraceEnabled) {
+          Console.err.println(s"[macro-peg] $message")
+        }
+        ParseFailure(
+          message = message,
+          next = input,
+          committed = recursionHardFail,
+          expected = List("non-nullable recursive rule must consume input")
+        )
+      } else {
+        context.stack += frame
+        context.activeCounts.update(frame, occurrences)
+        try body
+        finally {
+          if(context.stack.nonEmpty) context.stack.remove(context.stack.length - 1)
+          val remainingCount = context.activeCounts.getOrElse(frame, 1) - 1
+          if(remainingCount <= 0) context.activeCounts.remove(frame)
+          else context.activeCounts.update(frame, remainingCount)
+        }
+      }
+    }
   }
 
   def chainl[A](p: MacroParser[A])(q: MacroParser[(A, A) => A]): MacroParser[A] = {
@@ -104,8 +224,10 @@ object MacroParsers {
 
   def range(ranges: Seq[Char]*): RangedParser = RangedParser(ranges: _*)
   implicit def characterRangesToParser(ranges: Seq[Seq[Char]]): RangedParser = range(ranges: _*)
-  def refer[T](parser: => MacroParser[T]): ReferenceParser[T] = ReferenceParser(() => parser)
+  def refer[T](parser: => MacroParser[T]): ReferenceParser[T] = ReferenceParser(() => parser, None)
+  def refer[T](name: String, parser: => MacroParser[T]): ReferenceParser[T] = ReferenceParser(() => parser, Some(name))
   def rewritable[T](parser: MacroParser[T]): RewritableParser[T] = RewritableParser(parser)
+  def guard[T](name: String)(parser: => MacroParser[T]): GuardParser[T] = GuardParser(name, () => parser)
 
   private def consumed(input: Input, failure: ParseFailure): Int = input.length - failure.next.length
 
@@ -126,9 +248,15 @@ object MacroParsers {
   }
 
   def parseAll[T](parser: MacroParser[T], input: Input): Either[ParseFailure, T] = {
-    (parser ~ !any)(input) match {
-      case ParseSuccess(result ~ _, _) => Right(result)
-      case failure: ParseFailure => Left(failure)
+    val previous = recursionContextTL.get()
+    recursionContextTL.set(new RecursionContext(input.length))
+    try {
+      (parser ~ !any)(input) match {
+        case ParseSuccess(result ~ _, _) => Right(result)
+        case failure: ParseFailure => Left(failure)
+      }
+    } finally {
+      recursionContextTL.set(previous)
     }
   }
 
@@ -307,9 +435,48 @@ object MacroParsers {
     }
   }
 
-  final case class ReferenceParser[T](delayedParser: () => MacroParser[T]) extends MacroParser[T] {
-    override def apply(input: Input): ParseResult[T] = reference(input)
+  final case class ReferenceParser[T](delayedParser: () => MacroParser[T], debugName: Option[String]) extends MacroParser[T] {
+    private val parserId: Int = referenceParserId.incrementAndGet()
+    private lazy val frameName: String = debugName.getOrElse(s"ref#$parserId")
+
+    override def apply(input: Input): ParseResult[T] =
+      withRecursionFrame(frameName, input) {
+        reference(input)
+      }
+
     lazy val reference: MacroParser[T] = delayedParser()
+  }
+
+  final case class MemoParser[T](parser: MacroParser[T]) extends MacroParser[T] {
+    private val parserId: Int = memoParserId.incrementAndGet()
+
+    override def apply(input: Input): ParseResult[T] = {
+      val context = recursionContextTL.get()
+      if(context == null) {
+        val previous = recursionContextTL.get()
+        recursionContextTL.set(new RecursionContext(input.length))
+        try apply(input)
+        finally recursionContextTL.set(previous)
+      } else {
+        val key = (parserId, input.length)
+        context.memo.get(key) match {
+          case Some(MemoDone(result)) =>
+            result.asInstanceOf[ParseResult[T]]
+          case Some(MemoInProgress) =>
+            ParseFailure(
+              "left-recursive memoized parser invocation detected",
+              input,
+              committed = recursionHardFail,
+              expected = List("memoized parser recursion must consume input")
+            )
+          case None =>
+            context.memo.update(key, MemoInProgress)
+            val result = parser(input)
+            context.memo.update(key, MemoDone(result.asInstanceOf[ParseResult[Any]]))
+            result
+        }
+      }
+    }
   }
 
   case object AnyParser extends MacroParser[String] {
@@ -369,5 +536,12 @@ object MacroParsers {
       case success: ParseSuccess[T] => success
       case failure: ParseFailure => failure.addTrace(name)
     }
+  }
+
+  final case class GuardParser[T](name: String, delayed: () => MacroParser[T]) extends MacroParser[T] {
+    override def apply(input: Input): ParseResult[T] =
+      withRecursionFrame(name, input) {
+        delayed()(input)
+      }
   }
 }
