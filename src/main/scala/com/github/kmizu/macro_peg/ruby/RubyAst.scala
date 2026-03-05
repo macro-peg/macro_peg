@@ -52,6 +52,7 @@ object RubyAst {
   case class UnaryOp(op: String, expr: Expr, span: Span = UnknownSpan) extends Expr
   case class BinaryOp(lhs: Expr, op: String, rhs: Expr, span: Span = UnknownSpan) extends Expr
   case class AssignExpr(name: String, value: Expr, span: Span = UnknownSpan) extends Expr
+  case class MultiAssignExpr(names: List[String], value: Expr, span: Span = UnknownSpan) extends Expr
   case class IfExpr(condition: Expr, thenBody: List[Statement], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr
   case class UnlessExpr(condition: Expr, thenBody: List[Statement], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr
   case class CaseExpr(scrutinee: Option[Expr], whens: List[WhenClause], elseBody: List[Statement], span: Span = UnknownSpan) extends Expr

@@ -177,3 +177,27 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
   - `case ... in ...` の `in` 節、`for x,y in ...` 複数束縛、`class << o; ...; end.class_eval ...` の chain を追加
 - 回帰テストを `RubySubsetParserSpec` に大量追加（`170` 件まで拡張）し、`sbt test` 全 `228` テスト成功を確認。
 - full corpus（timeout=5000ms）は揺れがあるものの、ピークで `65.45% (197/301)`、直近再計測で `64.12% (193/301)`。
+- 追加で coverage 改善サイクルを継続し、`expected==temp` / `expected==temp` を含む postfix modifier 文脈の失敗を修正。`methodSuffixChar` の `=` を `==/=>/=~` と衝突しない形に制限した。
+- `do ... end&.foo 1` のような chain 末尾 command-arg を式として取り込むため、`methodCommandSuffix` を導入（`callSuffix`/`nonIndexCallSuffix`/`callSuffixNoBlock` に反映）。
+- no-space 演算子の誤字句化を追加修正し、`!` サフィックスを `!=` / `!~` と衝突しないようにした。回帰として no-space `!=` と `!~` の spec を追加。
+- 改行継続の `+` 演算（`"... " +\n"...")` を通すため、`infix(op)` の後続空白を `spacing` に拡張。`test_emoji_breaks.rb` の失敗を単体で成功へ反転。
+- RHS 連鎖代入を `receiver`/`index` に拡張し、`expected[3] = actual[3] = nil` を受理。`ripper_test.rb` は単体で通過に改善。
+- `parser.diagnostics.all_errors_are_fatal = true` のような多段 receiver assignment を受理するため、`chainedReceiverAssignableHead` / `chainedReceiverAssignExpr` を追加（既存 receiver assignment 回帰なしを確認）。
+- `while (left, right = queue.shift)` 向けに `MultiAssignExpr` を AST+parser に追加し、括弧内 multi-assign 条件を式として受理。
+- 回帰テストを `RubySubsetParserSpec` に追加（no-space `!=`/`!~`、multiline `+` continuation、chained index assignment、chained receiver assignment、while 条件 multi-assign など）。`RubySubsetParserSpec` は `181` 件成功、`sbt test` 全 `239` 件成功。
+- full corpus 再計測:
+  - timeout=5000ms: `67.11% (202/301)`（前回 `65.78%` から +4 files）
+  - timeout=1000ms: `55.81% (168/301)`（timeout圧で前回 `56.81%` から -3 files）
+- 未解決の主クラスタは `bootstraptest/runner.rb`（`BT = Class.new(bt) do` 近辺 parse_error）、`test_case_comprehensive.rb`（`and class` 文脈）、`parser_test.rb` 後半の parse_error、および `test_yjit*` 系 timeout。
+- 続きで `class/module` を式文脈でも受理（`primaryNoCall` で `NilLiteral` 正規化）し、`ready and class C; end` を回帰テスト化。`test_case_comprehensive.rb` は失敗から通過へ反転した。
+- `class` を bare keyword call と receiver keyword method で分離し、`private/public/protected` の既存挙動（bare call）を維持したまま `and class ...` を両立させた。
+- full corpus（timeout=5000ms）を再計測して `68.11% (205/301)` に到達（直前 `67.11%` から +3 files）。
+- 次サイクルで block parameter の `|` 食い込みを修正。`|b, c=42|` 形式に加えて block keyword default（`|str: "foo"|`）と trailing comma（`|x,|`）を受理するように拡張した。
+- singleton `def` の receiver を拡張して `def (o = Object.new).each` / `def nil.test_binding` を受理。`defReceiverName` に parenthesized expr と `nil/true/false` receiver を追加した。
+- `a, b = expr,\n  expr` の multiline RHS が落ちる問題を修正し、`assignValueExpr` を「カンマ後だけ `spacing` 許可」に再設計した（文境界を壊さない形）。
+- 匿名 keyword forwarding を式側にも追加し、`[b, **]` / `foo.(**{})` を受理。あわせて dot-call shorthand（`m.(...)` => `call`）suffix を追加した。
+- `ruby2_keywords def foo(*args)` を statement として受理し、decorated def を parser に追加した。
+- `alias [] new` が未実装だったため `aliasStmt` を追加。`class << self; alias [] new; end` の最小再現を通過に反転した。
+- 回帰テストを `RubySubsetParserSpec` に追加し、`testOnly` は `194` 件成功、`sbt test` 全 `253` 件成功を維持。
+- full corpus 5s 再計測（`-Xmx8g -XX:+UseG1GC`）で `71.43% (215/301)` を確認。今回開始時点 `69.10% (208/301)` から `+7` files。
+- なお timeout は `42` 件（parse_error `41`, read_error `3`）で依然多く、`test_keyword.rb` / `test_lazy_enumerator.rb` / `bootstraptest/runner.rb` / `test/prism/unescape_test.rb` が次の重点掘りポイント。
