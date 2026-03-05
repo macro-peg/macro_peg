@@ -637,6 +637,14 @@ object RubySubsetParser {
       sym(";").and /
       newlineChar.and
 
+  private lazy val forwardingArgTail: P[Any] =
+    sym(",").and /
+      sym(")").and /
+      sym("]").and /
+      sym("}").and /
+      sym(";").and /
+      newlineChar.and
+
   private lazy val anonymousKeywordSplatExpr: P[Expr] =
     (sym("**") <~ anonymousForwardingTail).map(_ => LocalVar("**"))
 
@@ -731,7 +739,7 @@ object RubySubsetParser {
     }
 
   private lazy val forwardingArgExpr: P[Expr] =
-    sym("...").map(_ => LocalVar("..."))
+    (sym("...") <~ forwardingArgTail).map(_ => LocalVar("..."))
 
   private lazy val callArgExpr: P[Expr] =
     forwardingArgExpr / blockPassArgExpr / anonymousKeywordSplatExpr / doubleSplatArgExpr / splatArgExpr / keywordArgExpr / hashRocketArgExpr / refer(expr)
@@ -1417,6 +1425,7 @@ object RubySubsetParser {
 
   private lazy val multiAssignTargetExpr: P[Expr] =
     indexTarget.map { case (receiver, args) => Call(Some(receiver), "[]", args) } /
+      chainedReceiverAssignableHead.map { case receiver ~ name => Call(Some(receiver), name, Nil) } /
       receiverAssignableHead.map { case receiver ~ name => Call(Some(receiver), name, Nil) } /
       assignableName.map(assignableAsExpr)
 
@@ -1529,7 +1538,9 @@ object RubySubsetParser {
 
   private lazy val defMethodName: P[String] =
     token(
-      ("`".s ~ (escapedAnyChar / (!"`".s ~ any).map(_._2)).* ~ "`".s).map {
+      ("`".s ~ (escapedAnyChar / (!"`".s ~ !"\n".s ~ any).map {
+        case _ ~ _ ~ ch => ch
+      }).* ~ "`".s).map {
         case _ ~ chars ~ _ => s"`${chars.mkString}`"
       } /
         methodIdentifierNoSpace /
@@ -1713,8 +1724,21 @@ object RubySubsetParser {
     }
 
   private lazy val whenClause: P[WhenClause] =
-    ((kw("when") / kw("in")) ~ sepBy1(refer(expr), sym(",")) ~ (kw("then") / sym(";")).? ~ statementSep.* ~ blockStatementsUntil(kw("when") / kw("in") / kw("else") / kw("end")) ~ statementSep.*).map {
+    (
+      kw("when") ~ sepBy1(refer(expr), sym(",")) ~ (kw("then") / sym(";")).? ~ statementSep.* ~ blockStatementsUntil(kw("when") / kw("in") / kw("else") / kw("end")) ~ statementSep.*
+    ).map {
       case _ ~ patterns ~ _ ~ _ ~ body ~ _ => WhenClause(patterns, body)
+    } /
+      (
+        kw("in") ~ sepBy1(inPatternExpr, sym(",")) ~ (kw("then") / sym(";")).? ~ statementSep.* ~ blockStatementsUntil(kw("when") / kw("in") / kw("else") / kw("end")) ~ statementSep.*
+      ).map {
+        case _ ~ patterns ~ _ ~ _ ~ body ~ _ => WhenClause(patterns, body)
+      }
+
+  private lazy val inPatternExpr: P[Expr] =
+    (refer(expr) ~ (sym("=>") ~ refer(expr)).?).map {
+      case lhs ~ Some(_ ~ rhs) => BinaryOp(lhs, "=>", rhs)
+      case lhs ~ None => lhs
     }
 
   private lazy val caseStmt: P[Statement] =

@@ -201,3 +201,12 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - 回帰テストを `RubySubsetParserSpec` に追加し、`testOnly` は `194` 件成功、`sbt test` 全 `253` 件成功を維持。
 - full corpus 5s 再計測（`-Xmx8g -XX:+UseG1GC`）で `71.43% (215/301)` を確認。今回開始時点 `69.10% (208/301)` から `+7` files。
 - なお timeout は `42` 件（parse_error `41`, read_error `3`）で依然多く、`test_keyword.rb` / `test_lazy_enumerator.rb` / `bootstraptest/runner.rb` / `test/prism/unescape_test.rb` が次の重点掘りポイント。
+- 追加で `...` の曖昧性を修正。call引数の forwarding `...` を後続 delimiter 付きに制限して、`@o.clamp(...2)` を forwarding 誤認しないようにした。
+- multi-assign target を拡張し、`x1.y1.z` のような chained receiver target を受理。`test_assignment.rb` は line97 parse_error が解消され、5s では次の未対応点（line113）まで前進。
+- `def `(command)` が後続行の ``"`"`` まで食ってしまうバグを修正。`defMethodName` の backtick-quoted 分岐を改行非許容にして、`test/prism/unescape_test.rb` を parse_error から成功へ反転。
+- 併せて回帰テストを追加:
+  - beginless range引数の `...` 誤認回避
+  - backtick operator method + 後続 backtick string の共存
+  - case `in` で rightward assignment pattern（`in 0 => a`）
+- 検証は `sbt test` 全 `257` テスト成功。
+- full corpus 5s の再計測（`-Xmx8g -XX:+UseG1GC`）で `72.09% (217/301)` に到達（直前安定値 `71.43% (215/301)` から `+2` files）。

@@ -1733,6 +1733,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(RubySubsetParser.parse(input).isRight)
     }
 
+    it("parses beginless range argument without treating it as forwarding arg") {
+      val input = "assert_raise_with_message(*exc) {@o.clamp(...2)}"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses receiver logical assignment inside condition") {
       val input = "if (self.columns ||= 0) < n; :ok; end"
       val parsed = RubySubsetParser.parse(input)
@@ -2944,6 +2949,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(RubySubsetParser.parse(input).isRight)
     }
 
+    it("parses multi-assignment targets with chained receiver and index targets") {
+      val input = "x1.y1.z, x2[1, 2, 3], self[4] = r1, 6, r2"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses starred and indexed multi assignment") {
       val input = "*a = nil; ENV[n0], e0 = e0, ENV[n0]"
       assert(RubySubsetParser.parse(input).isRight)
@@ -2958,6 +2968,17 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       val input =
         """def `(command)`
           |  command
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses backtick operator method before later backtick string literals") {
+      val input =
+        """class T
+          |  def `(command)
+          |    command
+          |  end
+          |  def test_xstr; assert_context(Context::String.new("`", "`")); end
           |end""".stripMargin
       assert(RubySubsetParser.parse(input).isRight)
     }
@@ -3009,6 +3030,17 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
           |  true
           |else
           |  false
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in with rightward assignment pattern") {
+      val input =
+        """case x
+          |in 0 => a
+          |  a
+          |else
+          |  nil
           |end""".stripMargin
       assert(RubySubsetParser.parse(input).isRight)
     }
