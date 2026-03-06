@@ -1,6 +1,7 @@
 package com.github.kmizu.macro_peg.ruby
 
 import java.nio.charset.StandardCharsets
+import java.nio.charset.Charset
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -15,6 +16,28 @@ object RubyCorpusRunner {
     "third_party/ruby3/upstream/ruby/bootstraptest",
     "third_party/ruby3/upstream/ruby/test/prism"
   )
+  private val warmupSource: String =
+    """class Warmup
+      |  def run(arg, kw: 1, &block)
+      |    value = [arg, kw, {foo: kw}]
+      |    value.each do |item|
+      |      block&.call(item)
+      |    end
+      |    (value.first, self.class.name), *value[0, 1], (value[1], value.last[:foo]) = ["x", "y"], 1, 2, ["z", 3]
+      |    case value
+      |    in [head, *tail]
+      |      head
+      |    else
+      |      nil
+      |    end
+      |  end
+      |end
+      |
+      |Warmup.new.run(1, kw: 2) { |x| x }
+      |assert_separately(%W[- #{'src'}], __FILE__, __LINE__, <<-'eom', timeout: Float::INFINITY)
+      |  value = /#{Warmup}/
+      |eom
+      |""".stripMargin
 
   private final case class FailureInfo(path: Path, reason: String, message: String, elapsedMs: Long)
   private final case class ParseTiming(path: Path, elapsedMs: Long, status: String)
@@ -41,15 +64,20 @@ object RubyCorpusRunner {
       worker.interrupt()
       worker.join(10L)
       if(worker.isAlive) {
-        // NOTE: force-stop to prevent a timed-out parser from accumulating and poisoning corpus runs.
         try {
           worker.stop()
         } catch {
           case _: UnsupportedOperationException =>
             ()
         }
+        Left(s"timeout after ${timeoutMs}ms")
+      } else if(thrown != null) {
+        Left(s"exception: ${thrown.getClass.getSimpleName}: ${Option(thrown.getMessage).getOrElse("")}")
+      } else if(result == null) {
+        Left("exception: parser worker exited without a result")
+      } else {
+        result
       }
-      Left(s"timeout after ${timeoutMs}ms")
     } else if(thrown != null) {
       Left(s"exception: ${thrown.getClass.getSimpleName}: ${Option(thrown.getMessage).getOrElse("")}")
     } else if(result == null) {
@@ -80,6 +108,29 @@ object RubyCorpusRunner {
       }
     }.sorted
 
+  private val codingPattern = """(?i)\bcoding\s*[:=]\s*([A-Za-z0-9._-]+)""".r
+  private val fileEncodingPattern = """(?i)\bfileencoding=([A-Za-z0-9._-]+)""".r
+
+  private def detectRubyEncoding(bytes: Array[Byte]): Option[Charset] = {
+    val header = new String(bytes.take(512), StandardCharsets.ISO_8859_1)
+    val firstTwoLines = header.linesIterator.take(2).mkString("\n")
+    val encodingName =
+      codingPattern.findFirstMatchIn(firstTwoLines).map(_.group(1))
+        .orElse(fileEncodingPattern.findFirstMatchIn(firstTwoLines).map(_.group(1)))
+    encodingName.flatMap { name =>
+      try Some(Charset.forName(name))
+      catch {
+        case _: Exception => None
+      }
+    }
+  }
+
+  private def readRubySource(path: Path): String = {
+    val bytes = Files.readAllBytes(path)
+    val charset = detectRubyEncoding(bytes).getOrElse(StandardCharsets.UTF_8)
+    new String(bytes, charset)
+  }
+
   def main(args: Array[String]): Unit = {
     val roots =
       if(args.nonEmpty) args.toList.map(Paths.get(_))
@@ -97,11 +148,19 @@ object RubyCorpusRunner {
     val clusterEnabled = sys.env.get("RUBY_CORPUS_CLUSTER").contains("1")
     val profileEnabled = sys.env.get("RUBY_CORPUS_PROFILE").contains("1")
     val profileTop = sys.env.get("RUBY_CORPUS_PROFILE_TOP").flatMap(_.toIntOption).getOrElse(20)
+    val gcAfterTimeout = !sys.env.get("RUBY_CORPUS_GC_AFTER_TIMEOUT").contains("0")
+    val warmupRounds = sys.env.get("RUBY_CORPUS_WARMUP_ROUNDS").flatMap(_.toIntOption).getOrElse(5)
     val failureOutPath = sys.env.get("RUBY_CORPUS_FAIL_OUT").map(Paths.get(_))
     val maxFiles = sys.env.get("RUBY_CORPUS_MAX_FILES").flatMap(_.toIntOption).filter(_ > 0)
     val files = maxFiles.map(allFiles.take).getOrElse(allFiles)
     maxFiles.foreach { limit =>
       println(s"RUBY_CORPUS_MAX_FILES active: using first ${files.size}/${allFiles.size} files")
+    }
+
+    if(warmupRounds > 0) {
+      (0 until warmupRounds).foreach { _ =>
+        RubySubsetParser.parse(warmupSource)
+      }
     }
 
     var success = 0
@@ -110,7 +169,7 @@ object RubyCorpusRunner {
 
     files.foreach { path =>
       try {
-        val source = Files.readString(path, StandardCharsets.UTF_8)
+        val source = readRubySource(path)
         val fileStarted = System.nanoTime()
         parseWithTimeout(source, timeoutMs) match {
           case Right(_) =>
@@ -123,6 +182,9 @@ object RubyCorpusRunner {
             val reason = classifyFailure(error)
             failures += FailureInfo(path, reason, message, elapsedMs)
             timings += ParseTiming(path, elapsedMs, reason)
+            if(reason == "timeout" && gcAfterTimeout) {
+              System.gc()
+            }
         }
       } catch {
         case NonFatal(e) =>

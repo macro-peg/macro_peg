@@ -89,6 +89,30 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses hash literals with punctuated label keys") {
+      val input = "x = {a?: true, b!: false}"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses hash literals with quoted label keys") {
+      val input = """x = {"a-b": true}"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses hash literals with newline after label colon") {
+      val input =
+        """x = {a:
+          |  1}""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses keyword args with newline after label colon") {
+      val input =
+        """foo(a:
+          |  1)""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses array literals with splat elements") {
       val input = "x = [*head, 1]"
       val parsed = RubySubsetParser.parse(input)
@@ -112,6 +136,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       val input = "x = [*((params.rest.name || :*) if params.rest && !params.rest.is_a?(ImplicitRestNode))]"
       val parsed = RubySubsetParser.parse(input)
       assert(parsed.isRight)
+    }
+
+    it("parses array literals with local assignment elements") {
+      val input = """a = ["", src="", ec, nil, 50, :partial_input=>true]"""
+      assert(RubySubsetParser.parse(input).isRight)
     }
 
     it("returns parse failure for broken syntax") {
@@ -436,6 +465,27 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       val input = "categories.map {|category, str: \"foo\", num: 424242, | [category, str, num] }"
       val parsed = RubySubsetParser.parse(input)
       assert(parsed.isRight)
+    }
+
+    it("parses multiline block parameters with anonymous rest") {
+      val input =
+        """tap do |_,
+          |  bug6115 = '[ruby-dev:45308]',
+          |  *|
+          |  bug6115
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses multiline block parameters with array defaults") {
+      val input =
+        """tap do |_,
+          |  methods = [['map', 'no'], ['inject([])', 'with']],
+          |  blocks = [['do end', 'do'], ['{}', 'brace']],
+          |  *|
+          |  methods
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
     }
 
     it("parses do-end block attached to call") {
@@ -1594,6 +1644,28 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses multiline lambda parameters") {
+      val input =
+        """lmd = ->(x,
+          |         y,
+          |         z) do
+          |  z
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses multiline def parameters") {
+      val input =
+        """def eval_with_jit(
+          |  script,
+          |  call_threshold: 1,
+          |  timeout: 1000
+          |)
+          |  script
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses symbol block-pass argument") {
       val input = "ts.each(&:kill)"
       val parsed = RubySubsetParser.parse(input)
@@ -1770,6 +1842,16 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(RubySubsetParser.parse(input).isRight)
     }
 
+    it("parses division argument followed by slash-containing string argument") {
+      val input = """f(c / a, "x / y")"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses shift expressions with assignment on the rhs") {
+      val input = "objs << obj = Object.new"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses beginless range argument without treating it as forwarding arg") {
       val input = "assert_raise_with_message(*exc) {@o.clamp(...2)}"
       assert(RubySubsetParser.parse(input).isRight)
@@ -1885,6 +1967,36 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses receiver assignments to const-style and :: method names") {
+      val input = "o.foo = o.Foo = o::baz = nil; o.bar = o.Bar = o::qux = 1"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses receiver assignments to keyword-named methods") {
+      val input = "o.begin = -10; o.end = 0"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses grouped multi-assign targets") {
+      val input = "(x1.y1.z, x2.x5), _a = [r1, r2], 7"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses grouped multi-assign targets after splat targets") {
+      val input = "*x2[1, 2, 3], (x3[4], x4.x5) = 6, 7, [r2, 8]"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses nested grouped multi-assign targets") {
+      val input = "((x1.y1.z, x1.x5), _a), *x2[1, 2, 3], ((x3[4], x4.x5), _b) = [[r1, 5], 10], 6, 7, [[r2, 8], 11]"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses chained receiver logical assignments") {
+      val input = "z.x.x ||= 1; z.x.x &&= 2"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses variable minus compound assignment") {
       val input = "w -= 1"
       val parsed = RubySubsetParser.parse(input)
@@ -1931,6 +2043,16 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses receiver logical assignment with regex-match ternary") {
       val input = """BT.wn ||= /-j(\d+)?/ =~ (ENV["MAKEFLAGS"] || ENV["MFLAGS"]) ? $1.to_i : 1"""
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+    }
+
+    it("parses ternary operator with newline before else branch") {
+      val input =
+        """"abc".gsub(/[ac]/) {
+          |  $& == "a" ? "\xc2\xa1".force_encoding("euc-jp") :
+          |              "\xc2\xa1".force_encoding("utf-8")
+          |}""".stripMargin
       val parsed = RubySubsetParser.parse(input)
       assert(parsed.isRight)
     }
@@ -1984,6 +2106,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
           )
         ), UnknownSpan)
       )
+    }
+
+    it("parses regex literals that start with a space character") {
+      val input = """s = pat2.gsub(/ /, "")"""
+      assert(RubySubsetParser.parse(input).isRight)
     }
 
     it("parses interpolated double-quoted strings with nested quotes") {
@@ -2390,6 +2517,21 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses call arguments with quoted keyword labels") {
+      val input = """f("a": -1)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses no-space symbol command calls after keywords") {
+      val input = "if true then not_label:foo end"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses no-space symbol command calls inside interpolation") {
+      val input = """"#{not_label:foo}""""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses call arguments with shorthand keyword labels") {
       val input = "f(x:, y:)"
       val parsed = RubySubsetParser.parse(input)
@@ -2417,6 +2559,17 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       val input = """assert_normal_exit %q{x}, "msg", ["INT"], :timeout => 10 or break"""
       val parsed = RubySubsetParser.parse(input)
       assert(parsed.isRight)
+    }
+
+    it("parses bracket calls with mixed literal hash-rocket keys") {
+      val input =
+        """@cls ||= Hash
+          |@h = @cls[
+          |  1 => 'one', self => 'self', true => 'true', nil => 'nil',
+          |  'nil' => nil
+          |]
+          |""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
     }
 
     it("parses command-style call with deep constant-path argument") {
@@ -2482,6 +2635,40 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       )
     }
 
+    it("parses interpolated mixed heredoc markers in call args") {
+      val input =
+        """tailcall("#{<<-"begin;"}\n#{<<~"end;"}")
+          |begin;
+          |  def identity(val)
+          |    val
+          |  end
+          |end;""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses interpolated mixed heredoc markers before do-block call") {
+      val input =
+        """assert_syntax_error("#{<<~"begin;"}\n#{<<~'end;'}", '') do
+          |  begin;
+          |    1.times {|&b?| }
+          |  end;
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses lowercase plain heredoc terminator adjacent to block end") {
+      val input =
+        """%w(== !=).each do |m|
+          |  assert_redefine_method('String', m, <<-end)
+          |    assert_equal :b, ("a" #{m} "b").to_sym
+          |    b = 'b'
+          |    assert_equal :b, ("a" #{m} b).to_sym
+          |    assert_equal :b, (b #{m} "b").to_sym
+          |  end
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses single-quoted heredoc marker in arguments") {
       val input =
         """assert_normal_exit(<<'End', "msg") if false
@@ -2490,6 +2677,15 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
           |""".stripMargin
       val parsed = RubySubsetParser.parse(input)
       assert(parsed.isRight)
+    }
+
+    it("parses single-quoted heredoc after percent-word args on the same line") {
+      val input =
+        """assert_separately(%W[- #{srcdir}], __FILE__, __LINE__, <<-'eom', timeout: Float::INFINITY)
+          |  dir = ARGV.shift
+          |eom
+          |""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
     }
 
     it("parses quoted heredoc marker with non-identifier delimiter") {
@@ -2502,6 +2698,17 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(parsed.isRight)
     }
 
+    it("parses heredoc with empty quoted delimiter") {
+      val input =
+        """args = [EnvUtil.rubybin, "--disable=gems", "-e", <<"", :err => File::NULL]
+          |  Signal.trap("INT") do |signo|
+          |    signo
+          |  end
+          |
+          |""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("does not mis-detect heredoc opener text inside string literals") {
       val input =
         """pairs = ["<<-HERE\n", "\nHERE"]
@@ -2511,6 +2718,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
           |""".stripMargin
       val parsed = RubySubsetParser.parse(input)
       assert(parsed.isRight)
+    }
+
+    it("does not mis-detect heredoc opener text inside adjacent string literals") {
+      val input = """assert_valid_syntax("{label:<<DOC\n""DOC\n""}", bug11849)"""
+      assert(RubySubsetParser.parse(input).isRight)
     }
 
     it("keeps interpolation markers literal in normalized heredoc content") {
@@ -2676,6 +2888,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       val input = "while node = queue.shift; return node if node; end"
       val parsed = RubySubsetParser.parse(input)
       assert(parsed.isRight)
+    }
+
+    it("parses while with low-precedence or in the condition") {
+      val input = "while prod_threads.any?(&:alive?) or !q.empty?\n  items << q.pop(true) rescue nil\nend"
+      assert(RubySubsetParser.parse(input).isRight)
     }
 
     it("parses while with parenthesized multi assignment condition") {
@@ -2974,6 +3191,15 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(RubySubsetParser.parse(input).isRight)
     }
 
+    it("parses parenthesized multiline expressions before postfix while") {
+      val input =
+        """(
+          |  total += 1
+          |  total += 2
+          |) while false""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses for...in...do...end") {
       val input = "for i in 1..10 do\n  puts i\nend"
       assert(RubySubsetParser.parse(input).isRight)
@@ -3000,6 +3226,22 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(parsed.isRight)
       assert(parsed.isRight)
       assert(parsed.toOption.get.statements.length == 1)
+    }
+
+    it("does not strip __END__ inside heredoc bodies") {
+      val input =
+        """eval(<<~END, nil, __FILE__, __LINE__)
+          |  1.times do
+          |  end
+          |__END__
+          |  ignored only by Ruby runtime data section, not here
+          |END
+          |
+          |x = 1
+          |""".stripMargin
+      val parsed = RubySubsetParser.parse(input)
+      assert(parsed.isRight)
+      assert(parsed.toOption.get.statements.length == 2)
     }
 
     it("parses begin...end as expression on RHS of assignment") {
@@ -3103,6 +3345,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(RubySubsetParser.parse(input).isRight)
     }
 
+    it("parses control and meta question-mark character literals") {
+      val input = """assert_equal("\1", ?\C-a); assert_equal("\341", ?\M-a); assert_equal("\201", ?\M-\C-a)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses double-quoted strings containing backticks in call args") {
       val input = """assert_context(Context::String.new("`", "`"))"""
       assert(RubySubsetParser.parse(input).isRight)
@@ -3110,6 +3357,16 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses anonymous keyword forwarding in array literals") {
       val input = "def self.a(b: 1, **) [b, **] end"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses array literals with bare keyword-hash elements") {
+      val input = "steps = [10, by: -1, to: nil]"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses command calls with array arg containing bare keyword-hash elements") {
+      val input = "assert_step [10, by: -1], inf: true"
       assert(RubySubsetParser.parse(input).isRight)
     }
 
@@ -3155,6 +3412,187 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(RubySubsetParser.parse(input).isRight)
     }
 
+    it("parses case-in guard clauses") {
+      val input =
+        """case x
+          |in a if a == 0
+          |  true
+          |else
+          |  false
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in guard clauses on array patterns") {
+      val input =
+        """case value
+          |in [x] if x > 0
+          |in [0]
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in or-pattern clauses on array patterns") {
+      val input =
+        """case value
+          |in []
+          |in [1] | [0]
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in lambda patterns") {
+      val input =
+        """case x
+          |in ->(i) { i == 0 }
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in pin operator patterns") {
+      val input =
+        """case [0, 0]
+          |in a, ^a
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in hash patterns with pin-expression values") {
+      val input =
+        """case {released_at: Time.new(2018, 12, 25)}
+          |in {released_at: ^(Time.new(2010)..Time.new(2020))}
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in hash patterns with punctuated label keys") {
+      val input =
+        """case {a?: true}
+          |in a?: true
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in hash patterns with newline after label colon") {
+      val input =
+        """case {a: 0}
+          |in {a:
+          |      2}
+          |  false
+          |in {a:
+          |}
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in patterns with trailing comma before semicolon") {
+      val input =
+        """case x
+          |in 0,;
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in bare splat patterns") {
+      val input =
+        """case [0, 1, 2]
+          |in *, 1, *
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in bracketed splat array patterns") {
+      val input =
+        """case [0, 1, 2]
+          |in [*, 1, *]
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in bracketed rightward assignment array patterns") {
+      val input =
+        """case [0, 1, 2]
+          |in [*, 1 => a, *]
+          |  a
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in constant deconstruct patterns") {
+      val input =
+        """case value
+          |in Array(*, 1, *)
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in bracket deconstruct patterns") {
+      val input =
+        """case value
+          |in C[0]
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses case-in bracket deconstruct patterns with shorthand hash labels") {
+      val input =
+        """case value
+          |in Array[a:]
+          |  a
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses top-level hash patterns without braces") {
+      val input =
+        """case value
+          |in "a":, **rest
+          |  rest
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses top-level bare double-splat hash patterns") {
+      val input =
+        """case value
+          |in **nil
+          |  true
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses standalone rightward pattern matching with array patterns") {
+      val input = "[0, 1, 2] => [*, 1 => a, *]"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses standalone rightward pattern matching with top-level hash patterns") {
+      val input = "{a: 1} => a:"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses standalone rightward pattern matching with bracket deconstruct shorthand hash patterns") {
+      val input = "{} => Array[a:]"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses one-line in-pattern expressions") {
+      val input = "assert_equal true, (1 in 1); assert_equal false, (1 in 2)"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses unary operator method definition") {
       val input = "class C; def -@; :ok; end; end"
       assert(RubySubsetParser.parse(input).isRight)
@@ -3180,6 +3618,16 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(RubySubsetParser.parse(input).isRight)
     }
 
+    it("parses percent symbol literals") {
+      val input = "values = [%s(a), %s(), %s|b|]"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses percent regex literals with percent delimiter") {
+      val input = """assert_raise(ArgumentError, %r%unknown pack directive '\*' in '\*U'$%)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses equality operator without spaces") {
       val input = "expected==temp"
       assert(RubySubsetParser.parse(input).isRight)
@@ -3187,6 +3635,302 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses inequality operator without spaces") {
       val input = "line!=\"# x.txt\""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses singleton defs whose method name is a keyword") {
+      val input = "obj = Object.new; def obj.def; end"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses receiver call with empty args inside brace block") {
+      val input = "assert_raise(ArgumentError) { o.foo() }"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses explicit receiver operator calls for bracket access") {
+      val input = """h = @cls.[]("a" => 100, "b" => 200)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses bracket calls with array literal hash-rocket keys") {
+      val input = """assert_equal([[1], [2]], @cls[[1] => [2]].flatten)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses bracket calls with unary numeric hash-rocket keys") {
+      val input = """x = @cls[1 => :a, -1 => :b]"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses call arguments with receiver-call hash-rocket keys") {
+      val input = """system(env, RUBY, '-e', 'exit', 'rlimit_bogus'.to_sym => 123)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses io-popen array calls with trailing hash-rocket options") {
+      val input = """io = IO.popen([RUBY, "-e", "print Process.getpgrp", :pgroup=>true])"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses array literals with trailing symbol hash-rocket options") {
+      val input = """args = [RUBY, "-e", "print Process.getpgrp", :pgroup=>true]"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses array literals with single hash-rocket element") {
+      val input = """args = [:a=>true]"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses array literals with trailing hash-rocket element") {
+      val input = """args = [1, :a=>true]"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses function calls with single hash-rocket array arg element") {
+      val input = """f([:a=>true])"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses function calls with trailing hash-rocket array arg element") {
+      val input = """f([1, :a=>true])"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses io-popen array calls without trailing options") {
+      val input = """io = IO.popen([RUBY, "-e", "print Process.getpgrp"])"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses io-popen array calls with string mode arg and block") {
+      val input =
+        """IO.popen([RUBY, '-egets'], 'w') do |f|
+          |  Process.wait spawn(*TRUECOMMAND, :pgroup=>f.pid)
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses io-popen array calls with receiver-call option values") {
+      val input = """io2 = IO.popen([RUBY, "-e", "print Process.getpgrp", :pgroup=>io1.pid])"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses receiver call arguments with local assignments") {
+      val input = """ec.primitive_convert(src="a", dst="b", nil, 1, :partial_input=>true)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses multiline single-quoted string argument before do-block") {
+      val input =
+        """assert_in_out_err(["-Eutf-8:cp932"], '# coding: cp932
+          |$stderr = $stdout; raise "\x82\xa0"') do |outs, errs, status|
+          |  outs
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses array literals with regex elements") {
+      val input = """args = [/    \^/, /\n/]"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses function calls with regex array arguments") {
+      val input = """assert_pattern_list([/    \^/, /\n/], e.message)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses regex literals with interpolation segments") {
+      val input = """msg = /Invalid #{code[/\A\w+/]}/"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses special global variables with quoted names") {
+      val input = """loaded = $".dup; $".clear; loadpath = $:.dup; $:.clear"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses low-precedence and with assignment on the rhs") {
+      val input = """e = ENV[k] and h[k] = e"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses block bodies with low-precedence and assignment chains") {
+      val input = """MANDATORY_ENVS.each {|k| e = ENV[k] and h[k] = e }"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses defined? with leading semicolon inside parentheses") {
+      val input = """assert_equal("expression", defined? (;x))"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses defined? with trailing semicolon inside parentheses") {
+      val input = """assert_equal("expression", defined? (x;))"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses no-arg receiver calls with brace blocks") {
+      val input = """@h.each_value { |v| res << v }"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses receiver calls with brace blocks and multi-params") {
+      val input = """@h.each { |k, v| expected << v }"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses index-receiver calls chained to brace blocks") {
+      val input = """@cls[].each_value { |v| res << v }"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses index-receiver calls chained to do blocks") {
+      val input =
+        """h = @h
+          |h.each_pair do |k, v|
+          |  assert_equal(v, h.delete(k))
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses hash each-value methods with consecutive brace blocks") {
+      val input =
+        """def test_each_value
+          |  res = []
+          |  @cls[].each_value { |v| res << v }
+          |  assert_equal(0, [].length)
+          |
+          |  @h.each_value { |v| res << v }
+          |  assert_equal(0, [].length)
+          |
+          |  expected = []
+          |  @h.each { |k, v| expected << v }
+          |
+          |  assert_equal([], expected - res)
+          |  assert_equal([], res - expected)
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses nested index assignment targets") {
+      val input = """a_kw[-1][:y] = 2"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses chained calls on empty array literals") {
+      val input = """assert_equal(0, [].length)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses command-style spawn calls with splat bracket-call args") {
+      val input = """Process.wait Process.spawn(*PWD, :out => n)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses command-style spawn calls with splat bracket-call args and array redirect targets") {
+      val input = """Process.wait Process.spawn(*ECHO["a"], STDOUT=>["out", File::WRONLY|File::CREAT|File::TRUNC, 0644])"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses call arguments with array-literal hash-rocket keys") {
+      val input = """Process.wait Process.spawn(*ECHO["f"], [Process]=>1)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses call arguments with multi-element array hash-rocket keys") {
+      val input = """Process.wait Process.spawn(*ECHO["f"], [1, STDOUT]=>2)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses anonymous splat call arguments") {
+      val input = """def self.s(*) ->(*a){a}.call(*) end"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses method calls with negative positional args") {
+      val input = "assert_equal(5**2 % -8, 5.pow(2,-8))"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses unary minus receiver method calls") {
+      val input = "assert_equal((-3)**3 % 8, -3.pow(3,8))"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses call-with-brace-block used as a positional argument") {
+      val input = """assert_equal(123, delay { 123 }.call, message(bug6901) { disasm(:delay) })"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses receiver call-with-brace-block used as a positional argument") {
+      val input = """assert_nil("".unpack("i") {|x| result = x}, bug4059)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses receiver chains with closed range slices inside call args") {
+      val input = "assert_pattern_list([], e.message.lines[2..-1].join)"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses multiline bigint receiver dot-call") {
+      val input =
+        """assert_equal(4481650795473624846969600733813414725093,
+          |             2120078484650058507891187874713297895455.
+          |                pow(5478118174010360425845660566650432540723,
+          |                    5263488859030795548286226023720904036518))""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses receiver call with block and bare hash entry inside array arg") {
+      val input =
+        """IO.popen([env, RUBY, "-e", "puts Process.getrlimit(:CORE)", :rlimit_core=>n]) {|io|
+          |  assert_equal("#{n}\n#{n}\n", io.read)
+          |}""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses exact optimization call-with-block argument shape") {
+      val input = """assert_equal(123, delay { 123 }.call, message(bug6901) {disasm(:delay)})"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses exact parse-test receiver call with block inside assert_equal") {
+      val input = """assert_equal(-303, o.foo(1,2,3) {|x| -x } )"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses optimization method with mixed heredoc setup and block call args") {
+      val input =
+        """def test_tailcall_with_block
+          |  bug6901 = '[ruby-dev:46065]'
+          |
+          |  tailcall("#{<<-"begin;"}\n#{<<~"end;"}")
+          |  begin;
+          |    def identity(val)
+          |      val
+          |    end
+          |
+          |    def delay
+          |      -> {
+          |        identity(yield)
+          |      }
+          |    end
+          |  end;
+          |  assert_equal(123, delay { 123 }.call, message(bug6901) {disasm(:delay)})
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses parse-test method with heredoc interpolation and duplicate-arg block") {
+      val input =
+        """def test_duplicate_argument
+          |  assert_syntax_error("#{<<~"begin;"}\n#{<<~'end;'}", '') do
+          |    begin;
+          |      1.times {|&b?| }
+          |    end;
+          |  end
+          |end""".stripMargin
       assert(RubySubsetParser.parse(input).isRight)
     }
 
@@ -3214,5 +3958,6 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       val input = "assert_nil((\"a\".sub! \"b\" do end&.foo 1))"
       assert(RubySubsetParser.parse(input).isRight)
     }
+
   }
 }
