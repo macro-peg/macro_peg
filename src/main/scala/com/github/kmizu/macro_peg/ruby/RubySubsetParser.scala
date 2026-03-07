@@ -525,8 +525,10 @@ object RubySubsetParser {
       case _ ~ _ ~ _ ~ char => char
     }
 
+  private lazy val bulkStringChars: P[String] = takeUntil(Set('"', '\\', '#'))
+
   private lazy val stringLiteral: P[Expr] =
-    token(("\"".s ~ (escapedChar / interpolationSegment / plainStringChar).* ~ "\"".s).map {
+    token(("\"".s ~ (bulkStringChars / escapedChar / interpolationSegment / plainStringChar).* ~ "\"".s).map {
       case _ ~ chars ~ _ => StringLiteral(chars.mkString)
     })
 
@@ -540,8 +542,10 @@ object RubySubsetParser {
   private lazy val plainSingleQuotedChar: P[String] =
     (!"'".s ~ any).map(_._2)
 
+  private lazy val bulkSingleQuotedChars: P[String] = takeUntil(Set('\'', '\\'))
+
   private lazy val singleQuotedStringLiteral: P[Expr] =
-    token(("'".s ~ (escapedSingleQuotedChar / plainSingleQuotedChar).* ~ "'".s).map {
+    token(("'".s ~ (bulkSingleQuotedChars / escapedSingleQuotedChar / plainSingleQuotedChar).* ~ "'".s).map {
       case _ ~ chars ~ _ => StringLiteral(chars.mkString)
     })
 
@@ -556,24 +560,29 @@ object RubySubsetParser {
     })
 
   private def percentBody(open: String, close: String): P[String] = {
-    lazy val percentChunk: P[String] =
-      ((open.s ~ refer(percentChunk).* ~ close.s).map {
+    val stopChars = Set(open.charAt(0), close.charAt(0), '\\')
+    lazy val bulk: P[String] = takeUntil(stopChars)
+    lazy val escaped: P[String] = ("\\".s ~ any).map { case _ ~ c => s"\\$c" }
+    lazy val nested: P[String] =
+      (open.s ~ refer(percentChunk).* ~ close.s).map {
         case openText ~ inner ~ closeText => openText + inner.mkString + closeText
-      }) /
-        ((!open.s ~ !close.s ~ any).map {
-          case _ ~ _ ~ char => char
-        })
+      }
+    lazy val single: P[String] =
+      (!open.s ~ !close.s ~ any).map { case _ ~ _ ~ char => char }
+    lazy val percentChunk: P[String] = bulk / escaped / nested / single
     (open.s ~ percentChunk.* ~ close.s).map {
       case _ ~ chars ~ _ => chars.mkString
     }
   }
 
   private def percentBodySimple(delim: String): P[String] = {
+    val stopChars = Set(delim.charAt(0), '\\')
+    lazy val bulk: P[String] = takeUntil(stopChars)
     lazy val escaped: P[String] =
       ("\\".s ~ any).map { case _ ~ c => s"\\$c" }
     lazy val plain: P[String] =
       (!delim.s ~ any).map(_._2)
-    (delim.s ~ (escaped / plain).* ~ delim.s).map {
+    (delim.s ~ (bulk / escaped / plain).* ~ delim.s).map {
       case _ ~ chars ~ _ => chars.mkString
     }
   }
@@ -771,8 +780,10 @@ object RubySubsetParser {
       case spaces ~ first ~ rest => spaces :: first :: rest
     }
 
+  private lazy val bulkRegexChars: P[String] = takeUntil(Set('/', '\\', '#'))
+
   private lazy val regexBodyChars: P[List[String]] =
-    (escapedRegexChar / interpolationSegment / plainRegexChar).*
+    (bulkRegexChars / escapedRegexChar / interpolationSegment / plainRegexChar).*
 
   private lazy val argRegexLiteral: P[Expr] =
     token(("/".s ~ regexBodyChars ~ "/".s ~ range('a' to 'z', 'A' to 'Z').*).map {
@@ -2169,9 +2180,12 @@ object RubySubsetParser {
       rightwardAssignStmt /
       exprStatement
 
-  private lazy val statementBase: P[Statement] =
-    (
-      chainableKeywordExprStmt /
+  // Guard: first character matches keyword statement starters (b/w/u/f/c/d/m/i/a)
+  private lazy val keywordStmtGuard: P[String] =
+    range('b' to 'b', 'w' to 'w', 'u' to 'u', 'f' to 'f', 'c' to 'c', 'd' to 'd', 'm' to 'm', 'i' to 'i', 'a' to 'a')
+
+  private lazy val keywordStatements: P[Statement] =
+    chainableKeywordExprStmt /
       refer(beginStmt) /
       refer(whileStmt) /
       refer(untilStmt) /
@@ -2184,9 +2198,10 @@ object RubySubsetParser {
       refer(moduleStmt) /
       refer(ifStmt) /
       refer(unlessStmt) /
-      aliasStmt /
-      simpleStatement
-    )
+      aliasStmt
+
+  private lazy val statementBase: P[Statement] =
+    (keywordStmtGuard.and ~> keywordStatements) / simpleStatement
 
   private lazy val statement: P[Statement] =
     guarded("statement") {

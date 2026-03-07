@@ -348,3 +348,11 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
   - `bootstraptest/test_yjit_30k_methods.rb` (121018行) — 自動生成の巨大ファイル
   - `test/ruby/test_keyword.rb` (4597行) — 単体では約4.7秒で成功、corpus runner ではギリギリ5秒超え
 - `test_keyword.rb` は単体実行で 4754ms と5秒を250ms下回っており、軽微な最適化で corpus 内でも成功する見込みがある。
+- 性能最適化として `MacroParsers` に `TakeUntilParser` プリミティブを追加。stop文字集合まで一括読みするパーサーで、`percentBody` / `percentBodySimple` / `stringLiteral` / `singleQuotedStringLiteral` / `regexBodyChars` に適用。
+  - `test_yjit_30k_methods.rb`: 7283ms → 68ms（107x高速化）
+  - `test_yjit_30k_ifelse.rb`: 14972ms → 182ms（82x高速化）
+  - ボトルネックは `%q{...}` 内の100万文字を1文字ずつ `any` で処理していたこと
+- `statementBase` にキーワード先頭文字ガード（`range('b','w','u','f','c','d','m','i','a').and`）を追加。非キーワード行で15個の代替試行をスキップ。
+- full corpus 5s: **`99.34% (299/301)`**。残り2件は `test_keyword.rb` (8s) と `test_array.rb` (7s) の timeout。
+- full corpus 10s: **`100.00% (301/301)`**。全ファイルパース成功を確認。
+- 次の課題は `test_keyword.rb` / `test_array.rb` を5秒以内に収める性能改善。

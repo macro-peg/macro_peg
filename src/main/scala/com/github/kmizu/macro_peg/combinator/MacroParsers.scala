@@ -530,6 +530,21 @@ object MacroParsers {
     }
   }
 
+  /** Consumes characters until any of the stop characters is found. Returns the consumed string (at least 1 char). */
+  final case class TakeUntilParser(stopChars: Set[Char]) extends MacroParser[String] {
+    override def apply(input: Input): ParseResult[String] = {
+      var i = 0
+      val len = input.length
+      while(i < len && !stopChars.contains(input.charAt(i))) {
+        i += 1
+      }
+      if(i > 0) ParseSuccess(input.take(i), input.drop(i))
+      else ParseFailure("takeUntil: no characters consumed", input, expected = List("non-stop character"))
+    }
+  }
+
+  def takeUntil(stopChars: Set[Char]): MacroParser[String] = TakeUntilParser(stopChars)
+
   final case class AndParser[T](p: MacroParser[T]) extends MacroParser[Any] {
     override def apply(input: Input): ParseResult[Any] = p(input) match {
       case ParseSuccess(_, _) => ParseSuccess((), input)
