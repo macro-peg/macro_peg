@@ -45,8 +45,8 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - Rubyコミッター遠藤さんとの文脈を踏まえて「Ruby 3 grammar を完全表現し、AST まで取れるか」を本気で検討する話に進んだ。Higher-Order PEG + compile-time基盤での実装可能性と段階的ロードマップを詰める。
 - 「stateful lexerを使わず pure higher-order macro PEG でいけるか？」の問いに対して、動的delimiter捕捉（heredoc風）を `CallByValueSeq` で成立させる実証を追加。compile-time API と generator でも戦略指定できるように揃えた。
 - 「parser.y / lexer / AST node 関連は手元参照できるように」という提案を受けて、Ruby 3.3.9 の参照ソースを `third_party/ruby3/v3_3_9/` に取り込み、由来コミット付きREADMEを追加。
-- 次フェーズ（FullSet実装）に向けて、先に `ruby.RubyAst` と `ruby.RubySubsetParser` を追加。class/def/call/配列/ハッシュをAST化できる最小系をテストで固定した。
-- 「10年越しの宿題」という文脈を共有しつつ、`RubyFullParser` エントリポイントを追加して FullSet 実装へ前進。`module / if / unless / symbol literal` をサブセット側に先行実装し、ASTノードも拡張。
+- 次フェーズ（FullSet実装）に向けて、先に `ruby.RubyAst` と `ruby.RubyParser` を追加。class/def/call/配列/ハッシュをAST化できる最小系をテストで固定した。
+- 「10年越しの宿題」という文脈を共有しつつ、`RubyParser` エントリポイントを追加して FullSet 実装へ前進。`module / if / unless / symbol literal` をサブセット側に先行実装し、ASTノードも拡張。
 - 続きとして `elsif` 連鎖と postfix modifier（`stmt if cond` / `stmt unless cond`）を実装。Rubyっぽい分岐表現の下地をさらに強化した。
 - さらに Ruby の難所に向けた第一歩として、引数省略の command-style call（`puts :ok`, `add 1, 2`）を statement 文脈で対応。modifier付き（`log 1, 2 if ready`）も通るようにした。
 
@@ -54,7 +54,7 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - コウタが「指数爆発より無限ループが自然」という鋭い指摘をくれて、実際に `lazy val` 初期化再帰ループを特定できた。
 - `statement -> block -> statement` の初期化循環を `refer(statement)` 遅延参照に切り替えて解消。
 - あわせて `items.each do ... end` が落ちる原因（block直前の空白未吸収）も修正して、`blockCallExpr <~ spacing` を入れた。
-- `RubySubsetParserSpec` と `sbt test` 全体を通して、ハング解消と既存回帰がないことを確認。
+- `RubyParserSpec` と `sbt test` 全体を通して、ハング解消と既存回帰がないことを確認。
 - さらに「最終ゴールは FullSet」と再確認。方針をぶらさないため、今回の追加も FullSet移行に直結する土台（改行区切り文対応・`receiver.method(args)` + block対応）に限定して進めた。
 - 追加で dot-call を一般化して、`user.profile.name` みたいな no-arg chain と `foo.bar(1).baz do ... end` の chain + block を通せるように拡張。FullSetで必須になる call chain 表現力を前倒しで確保した。
 - FullSet寄せの次段として `return` / `self` / 定数パス（`A::B`）を AST と parser に追加。`self.log 1` の receiver command、`module A::B` / `class C::D` の名前解釈も対応して、Rubyの基本構文土台をさらに拡張した。
@@ -64,12 +64,12 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - さらに次の改善で、`for ... in` / `1..5` / `+=` / `retry` / `&block` / 式後置block（`lambda{...}.call` 形式）を実装。corpus 成功率は `4.98% (15/301)` から `5.32% (16/301)` へ小幅改善。
 - 続けて、`respond_to?` などのメソッド名記号（`?`/`!`/`=`）と、比較・論理・単項演算（`==` `!=` `<` `>` `&&` `||` `!` `and` `or`）を追加。corpus 成功率は `5.32% (16/301)` から `6.98% (21/301)` へ改善。
 - さらに `%q(...)` など paired delimiter のネスト対応を入れ、正規表現リテラル `/.../` と `:$a` / `:@x` / `:@@y` の symbol も対応。corpus 成功率が `6.98% (21/301)` から `12.62% (38/301)` へ大きく改善。
-- 追加で `%Q{...}` と `%w[...]` / `%W[...]` を parser に導入し、`=~` / `!~` の match 演算子と `=begin ... =end` ブロックコメントも対応。`RubySubsetParserSpec` に回帰テストを追加して `sbt test` 全パスを確認。
+- 追加で `%Q{...}` と `%w[...]` / `%W[...]` を parser に導入し、`=~` / `!~` の match 演算子と `=begin ... =end` ブロックコメントも対応。`RubyParserSpec` に回帰テストを追加して `sbt test` 全パスを確認。
 - Ruby本家 corpus を再計測して、成功率が `12.62% (38/301)` → `13.95% (42/301)` に改善。`test_massign.rb` の先頭詰まり（`=begin`）を解消できた。
-- さらに `%r{...}` / `%r"..."` 正規表現リテラル、`or` の改行継続、`or` 右辺での command-style call を追加。`RubySubsetParserSpec` に multiline `or` と `%r` のテストを足して回帰確認。
+- さらに `%r{...}` / `%r"..."` 正規表現リテラル、`or` の改行継続、`or` 右辺での command-style call を追加。`RubyParserSpec` に multiline `or` と `%r` のテストを足して回帰確認。
 - corpus 成功率を `13.95% (42/301)` から `14.95% (45/301)` へ更新。未対応構文まで進んだ結果、`test_eval.rb` は即失敗から timeout に遷移したので次段で絞り込み予定。
 - 次段で keyword 系を拡張し、`foo: 1` 形式の label hash entry と call 引数の keyword label（`f(x: 1)` / `f x: 1`）を追加。Prism系で多い `command_line: "p"` 形に対応する土台を作った。
-- `RubySubsetParserSpec` に label hash / keyword arg の回帰テストを追加し、corpus 成功率を `14.95% (45/301)` から `15.61% (47/301)` へ改善。
+- `RubyParserSpec` に label hash / keyword arg の回帰テストを追加し、corpus 成功率を `14.95% (45/301)` から `15.61% (47/301)` へ改善。
 - `%r"..."` の同一delimiterネストで発生していた探索爆発を修正。非ネスト専用の `percentBodySimple` を導入して `bootstraptest/test_eval.rb` の timeout を解消（1秒以内で通常判定に復帰）。
 - squiggly heredoc（`<<~TAG`）を parser前処理で文字列リテラル化し、`assert_equal "x", <<~RUBY, ...` のような trailing args 付き呼び出しを通せるようにした。`test_eval.rb` 単体が通過。
 - ASTとparserを拡張して `while` / `until`、代入式（`AssignExpr`）、単項 `+/-`、forwarding symbol literal（`:*` / `:**` / `:&`）を追加。`test/prism/api/parse_test.rb` 単体が通過。
@@ -77,13 +77,13 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - `-x` 付きスクリプト前置き（shell preamble）を parse 前に除去する処理を追加。`runner.rb` の先頭失敗が line1 から line19 へ前進。
 - 再計測で corpus 成功率を `15.61% (47/301)` から `17.94% (54/301)` に改善（+7）。
 - 続けて `bootstraptest/test_flow.rb` の line 505 失敗を調査し、配列/呼び出し引数の「カンマ後改行」を許可するよう `arrayLiteral` / `callArgs` / `indexSuffix` に `spacing` 吸収を追加。
-- 回帰テストとして multiline 配列要素・multiline 親付き引数を `RubySubsetParserSpec` に追加し、`test_flow.rb` 単体が通過。
+- 回帰テストとして multiline 配列要素・multiline 親付き引数を `RubyParserSpec` に追加し、`test_flow.rb` 単体が通過。
 - corpus 成功率をさらに `17.94% (54/301)` から `18.60% (56/301)` へ改善。
-- 次段で `case/when/else`、singleton `def Dir.mktmpdir(...)`、`||=` を追加し、`RubySubsetParserSpec` に回帰テストを拡充。`case` 節の改行処理バグも修正した。
+- 次段で `case/when/else`、singleton `def Dir.mktmpdir(...)`、`||=` を追加し、`RubyParserSpec` に回帰テストを拡充。`case` 節の改行処理バグも修正した。
 - Ruby本家 corpus を再計測して `23.59% (71/301)` まで上昇。続けて `<<` / `>>` 演算子と no-arg punctuation call（`block_given?` など）を導入した。
 - `self.columns = ...` / `self.columns ||= ...` / `self.columns += ...` 形式の receiver attribute assignment を式として扱えるよう拡張し、`w -= 1` を含む複合代入も一般化（`+=` 以外に `-=` `*=` `/=` `%=` `<<=` `>>=` など）した。
 - `wn > 0 ? wn : 1024` 向けに三項演算子を追加。性能回帰を避けるため、`conditionalExpr` は再パースを避ける左因子化実装にした。
-- `timeout&.*(timeout_scale)` のために safe navigation `&.` と演算子メソッド suffix（`*` など）を追加。対応ケースを `RubySubsetParserSpec` へ追加済み。
+- `timeout&.*(timeout_scale)` のために safe navigation `&.` と演算子メソッド suffix（`*` など）を追加。対応ケースを `RubyParserSpec` へ追加済み。
 - 回帰確認として `sbt test` 全パス、corpus は最新で `24.25% (73/301)`。`bootstraptest/runner.rb` は依然 `BT = Class.new(bt) do ...` 起点で失敗しており、次の掘りポイントとして継続調査中。
 
 ### 2026-03-04
@@ -103,26 +103,26 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - 補間付きダブルクォート文字列（`#{...}` 内に `"` を含むケース）と backtick 文字列（`` `...` ``）を追加。`writer.write_object({...})` 向けに multiline hash entry の改行処理も修正した。
 - `do ... ensure ... end` / `def ... ensure ... end` の bare ensure を `BeginRescue(..., ensureBody=...)` へ正規化する形で実装。加えて `faildesc, t = super` 用に `MultiAssign` AST+parser、`&:kill` の symbol block-pass、bare def params、`*args` / `**opts` と call 側 splat も追加した。
 - `(@count += 1)` のような式文脈での複合代入を `AssignExpr` 化して通過。`sbt test` は全件成功を維持した一方、full corpus は今回再計測でも `24.25% (73/301)` のままで、`bootstraptest/runner.rb` / `part_after_main` は未対応構文（class `Assertion` 周辺）で引き続き詰まっている。
-- 続きで `BT.columns > 0` / `e and BT.columns > 0` が落ちる回帰を修正。演算子前空白の扱いを見直し、`RubySubsetParserSpec` に比較式・`and` 連鎖の回帰テストを追加した。
+- 続きで `BT.columns > 0` / `e and BT.columns > 0` が落ちる回帰を修正。演算子前空白の扱いを見直し、`RubyParserSpec` に比較式・`and` 連鎖の回帰テストを追加した。
 - `puts tests.map {|path| File.basename(path) }.inspect` のような「空白あり brace-block suffix + chain」を通すため、`blockAttachSuffix` の空白吸収と `braceBlock` の閉じ波括弧手前空白を対応。関連テスト（command arg / `Thread.new{ r.read }`）を追加。
-- `sbt test` と `RubySubsetParserSpec` は全パス維持。ただし full corpus は現時点で `21.26% (64/301, timeout=1000ms)` まで低下しており、`runner.rb` は依然 timeout。性能回帰と `class Assertion` 以降の解析継続が次タスク。
+- `sbt test` と `RubyParserSpec` は全パス維持。ただし full corpus は現時点で `21.26% (64/301, timeout=1000ms)` まで低下しており、`runner.rb` は依然 timeout。性能回帰と `class Assertion` 以降の解析継続が次タスク。
 - `runner.rb` 再攻略で、`def ... rescue/else/ensure ... end` を `defStmt` 側でも正式対応。さらに postfix `rescue` modifier（`r.close rescue nil`）と `%` 二項演算子を追加して、`with_stderr` / `show_progress` 周辺の詰まりを解消した。
 - `blockStatementsUntil` を再帰型に作り直して、複数 `rescue` 節で改行をまたぐケースを安定化。`def f ... rescue E1 ... rescue E2 ...` の回帰テストを追加した。
 - `-> as do ... end` の lambda literal を `LambdaLiteral` AST として追加し、`add_assertion testsrc, -> as do ... end` を通過可能にした。加えて keyword parameter（`timeout: ...`）と特殊グローバル `$?` も対応。
 - `sleep 0.1` で詰まっていたため `FloatLiteral` を導入。postfix `while/until` を statement 全体へ適用できるようにして `end while true` も受理するよう拡張した。
-- 検証結果は `RubySubsetParserSpec` 98テスト + `sbt test` 全体151テスト全パス。full corpus は `24.92% (75/301)` から `26.91% (81/301)` へ改善（+6）。`runner.rb` は構文的には通るが `timeout=1000ms` では約1.05秒で依然 timeout。
+- 検証結果は `RubyParserSpec` 98テスト + `sbt test` 全体151テスト全パス。full corpus は `24.92% (75/301)` から `26.91% (81/301)` へ改善（+6）。`runner.rb` は構文的には通るが `timeout=1000ms` では約1.05秒で依然 timeout。
 - 次の掘りで `parse.y` を見直しつつ、`Dir[glob_pattern, base: BASE]` のような bracket call 引数（keyword label含む）を parser に追加。
 - `def method_missing(name, *)` 用に nameless rest parameter（`*` / `**`）を formal parameter で受理。
 - `items[1..]` / `items[..limit]` みたいな open-ended range を追加し、`0...0x100` が `..` に先食いされる不具合を `rangeOp` の優先順（`...` 先）で修正。
 - 配列要素の splat（`[*head, 1]`）を受理するため `arrayElementExpr` を導入。
-- 回帰として `RubySubsetParserSpec` に上記ケースのテストを追加し、`testOnly com.github.kmizu.macro_peg.ruby.RubySubsetParserSpec` は全117件成功を維持。
+- 回帰として `RubyParserSpec` に上記ケースのテストを追加し、`testOnly com.github.kmizu.macro_peg.ruby.RubyParserSpec` は全117件成功を維持。
 - full corpus (`RubyCorpusRunner`, timeout=1000ms) は timeout 依存の揺れが大きく、今回は速度改善まで届かず。次段は `parse.y` の statement/command 分岐を再照合しつつ、`runner.rb` / `parse_test.rb` 系の timeout 原因を構文単位で分割して潰す方針。
 - 途中経過を `AGENTS.md` に随時残す運用を再確認して、このセッション分も追記しながら進行。
-- 連続文字列リテラル連結（`"a" "b"`）を parser に追加。`RubySubsetParserSpec` に `parses adjacent string literals as one argument` を追加。
+- 連続文字列リテラル連結（`"a" "b"`）を parser に追加。`RubyParserSpec` に `parses adjacent string literals as one argument` を追加。
 - ternary と symbol literal の曖昧性を修正。`part ? part.unescaped : "1"` が `part.unescaped :"1"` と誤解釈される経路を、`symbolLiteral` の `:` 後スペース禁止（`symbolPrefix` 導入）で解消。
 - これにより `test/prism/heredoc_dedent_test.rb` の失敗（`node.parts.map { ... ? ... : "1" }`）を解消し、単体実行で成功を確認。
 - block suffix の誤バックトラック抑制のため `blockAttachSuffix` に block 開始 lookahead（`do` / `{`）を追加して失敗位置の診断を改善。
-- 検証は `sbt test` 全 `173` テスト成功、`RubySubsetParserSpec` 全 `120` テスト成功を確認。
+- 検証は `sbt test` 全 `173` テスト成功、`RubyParserSpec` 全 `120` テスト成功を確認。
 - full corpus 再計測（timeout=1000ms）は `21.59% (65/301)`。`bootstraptest/runner.rb` は依然 `BT = Class.new(bt) do` 近辺で `expected end`/timeout が残っており、次段の掘り対象として継続。
 - `parse.y` を再確認して、`primary` が `tLPAREN compstmt ')'` を受理する構造（括弧内で modifier 付き式が来る）を踏まえ、`parenExpr` の不足を特定。
 - `exprPostfixModifierSuffix` / `exprWithPostfixModifier` を追加し、`(expr if cond)` / `(expr unless cond)` / `(expr while cond)` / `(expr until cond)` を括弧内式として受理できるよう拡張。
@@ -175,7 +175,7 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
   - `o&.x = 6` の safe-nav assignment、`def `(command)`、`?a` 文字リテラル、`:'@'` symbol、`{**a}` hash splat を追加
   - `&method(:sleep).to_proc` のような call-chain block pass を受理
   - `case ... in ...` の `in` 節、`for x,y in ...` 複数束縛、`class << o; ...; end.class_eval ...` の chain を追加
-- 回帰テストを `RubySubsetParserSpec` に大量追加（`170` 件まで拡張）し、`sbt test` 全 `228` テスト成功を確認。
+- 回帰テストを `RubyParserSpec` に大量追加（`170` 件まで拡張）し、`sbt test` 全 `228` テスト成功を確認。
 - full corpus（timeout=5000ms）は揺れがあるものの、ピークで `65.45% (197/301)`、直近再計測で `64.12% (193/301)`。
 - 追加で coverage 改善サイクルを継続し、`expected==temp` / `expected==temp` を含む postfix modifier 文脈の失敗を修正。`methodSuffixChar` の `=` を `==/=>/=~` と衝突しない形に制限した。
 - `do ... end&.foo 1` のような chain 末尾 command-arg を式として取り込むため、`methodCommandSuffix` を導入（`callSuffix`/`nonIndexCallSuffix`/`callSuffixNoBlock` に反映）。
@@ -184,7 +184,7 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - RHS 連鎖代入を `receiver`/`index` に拡張し、`expected[3] = actual[3] = nil` を受理。`ripper_test.rb` は単体で通過に改善。
 - `parser.diagnostics.all_errors_are_fatal = true` のような多段 receiver assignment を受理するため、`chainedReceiverAssignableHead` / `chainedReceiverAssignExpr` を追加（既存 receiver assignment 回帰なしを確認）。
 - `while (left, right = queue.shift)` 向けに `MultiAssignExpr` を AST+parser に追加し、括弧内 multi-assign 条件を式として受理。
-- 回帰テストを `RubySubsetParserSpec` に追加（no-space `!=`/`!~`、multiline `+` continuation、chained index assignment、chained receiver assignment、while 条件 multi-assign など）。`RubySubsetParserSpec` は `181` 件成功、`sbt test` 全 `239` 件成功。
+- 回帰テストを `RubyParserSpec` に追加（no-space `!=`/`!~`、multiline `+` continuation、chained index assignment、chained receiver assignment、while 条件 multi-assign など）。`RubyParserSpec` は `181` 件成功、`sbt test` 全 `239` 件成功。
 - full corpus 再計測:
   - timeout=5000ms: `67.11% (202/301)`（前回 `65.78%` から +4 files）
   - timeout=1000ms: `55.81% (168/301)`（timeout圧で前回 `56.81%` から -3 files）
@@ -198,7 +198,7 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - 匿名 keyword forwarding を式側にも追加し、`[b, **]` / `foo.(**{})` を受理。あわせて dot-call shorthand（`m.(...)` => `call`）suffix を追加した。
 - `ruby2_keywords def foo(*args)` を statement として受理し、decorated def を parser に追加した。
 - `alias [] new` が未実装だったため `aliasStmt` を追加。`class << self; alias [] new; end` の最小再現を通過に反転した。
-- 回帰テストを `RubySubsetParserSpec` に追加し、`testOnly` は `194` 件成功、`sbt test` 全 `253` 件成功を維持。
+- 回帰テストを `RubyParserSpec` に追加し、`testOnly` は `194` 件成功、`sbt test` 全 `253` 件成功を維持。
 - full corpus 5s 再計測（`-Xmx8g -XX:+UseG1GC`）で `71.43% (215/301)` を確認。今回開始時点 `69.10% (208/301)` から `+7` files。
 - なお timeout は `42` 件（parse_error `41`, read_error `3`）で依然多く、`test_keyword.rb` / `test_lazy_enumerator.rb` / `bootstraptest/runner.rb` / `test/prism/unescape_test.rb` が次の重点掘りポイント。
 - 追加で `...` の曖昧性を修正。call引数の forwarding `...` を後続 delimiter 付きに制限して、`@o.clamp(...2)` を forwarding 誤認しないようにした。
@@ -217,11 +217,11 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
   - `alias ** +`、`{|;x| ...}` block-local params、`(a; b) until ...` を追加
   - `?\uXXXX` / `?\u{...}` / `?\xNN` / `?\000` の文字リテラルを受理
   - 非ASCIIローカル変数（例: `α = 1`）を受理（巨大文字レンジは使わず、ASCII否定lookaheadで実装）
-- 追加回帰テストを `RubySubsetParserSpec` に実装し、`sbt test` 全 `269` テスト成功を確認。
+- 追加回帰テストを `RubyParserSpec` に実装し、`sbt test` 全 `269` テスト成功を確認。
 - 旧 fail 83 本を再計測して `success=23/83`（前回 `22/83` から `+1`）に改善。`test_unicode_escape.rb` を新規回復し、`now2` 比で回帰は 0 を維持。
 - 代表的な回復ファイルは `test_rational.rb` / `test_thread_queue.rb` / `test_variable.rb` / `test_unicode_escape.rb` など。残課題は `test_time.rb`（5s timeout）と、command-style と `/` 正規表現曖昧性が絡む一部クラスタ（`test_integer_comb.rb` 起点の周辺）を次段で継続。
 - 次サイクルで `test_integer_comb.rb` の最小再現（`f(c / a, "x / y")` 相当）を掘り、`commandCall` が `/.../` 引数として誤読する経路を特定。`regexLiteral` の `/` 開始分岐に「直後が水平空白ではない」ガードを追加して誤読を解消した。
-- 回帰テストとして `parses division argument followed by slash-containing string argument` を `RubySubsetParserSpec` に追加。`testOnly` / `sbt test` は全パス維持（`270` テスト成功）。
+- 回帰テストとして `parses division argument followed by slash-containing string argument` を `RubyParserSpec` に追加。`testOnly` / `sbt test` は全パス維持（`270` テスト成功）。
 - 実測で `test_integer_comb.rb` は timeout=5000ms で成功に改善（約1.5s）。一方 `test_time.rb` は依然 5s しきい値を僅差で超過（約5.02s timeout、timeout=20000ms では約6.8sで成功）。
 - `test_time.rb` については method-prefix 分割と連続計測で再現レンジを絞り、単一メソッド起因でなく累積コスト型であることを確認。`def` 解析の二重試行削減（endless/regular の共通prefix化）や named guard の環境変数化（`RUBY_PARSER_NAMED_GUARD=1` で有効）を試したが、5s壁の突破には未達。
 - 数値リテラル parser（`integerLiteral` / `floatLiteral`）の `.memo` を導入し、広い backtrack ケースでの再パースを抑制。機能回帰はなし。
@@ -241,25 +241,25 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
   - 数値 receiver の `.` 後改行 call（`123.\n  pow(...)`）
 - parser 実装では `receiverKeywordMethodNameNoSpace` に `def` を追加、`inPatternExpr` を postfix guard と pin operator 対応へ拡張、`%s` symbol literal を追加、member access separator は「`.` の前/後の許可改行」を表現できるよう見直した。
 - 途中で `memberAccessSeparator` を `lineBreak.? ~> ...` で広げすぎて、5s 実測が `10/20` から `8/20` へ悪化する退化を踏んだ。statement 境界を飲み込みやすくなっていたのが原因で、前側の optional 改行をやめて「separator 直前の改行」と「separator 直後の改行」だけに絞り直した。
-- 回帰テストは `RubySubsetParserSpec` に 10 件以上追加し、`sbt test` は全 `287` テスト成功を確認。
+- 回帰テストは `RubyParserSpec` に 10 件以上追加し、`sbt test` は全 `287` テスト成功を確認。
 - 旧 fail83 `041-060` バッチ（timeout=5000ms）は最終的に `8/20 -> 11/20` まで改善。今回新たに回復した/前進した代表は `test_method.rb`、`test_range.rb`、`test_numeric.rb` 周辺。
 - この時点の残りは `test_m17n.rb`、`test_module.rb`、`test_optimization.rb`、`test_pack.rb`、`test_parse.rb`、`test_pattern_matching.rb`、`test_proc.rb`、`test_process.rb`。次サイクルは `parse_error` 群と `timeout` 群を完全に分けて進める。
 - 続きのサイクルで `pattern matching` と percent literal を追加で前進:
   - hash pattern 内の pin value（`in {released_at: ^(...)}`）
   - `in 0,;` の trailing comma array-pattern 入口
   - `%r%...%` の percent delimiter
-- 追加で failing shape をそのまま `RubySubsetParserSpec` に固定:
+- 追加で failing shape をそのまま `RubyParserSpec` に固定:
   - mixed heredoc interpolation (`"#{<<-"begin;"}\n#{<<~"end;"}"`)
   - lowercase plain heredoc terminator (`<<-end`)
   - exact `assert_equal(... delay { ... }.call, message(...) { ... })`
   - exact `assert_equal(-303, o.foo(...) {|x| ... } )`
-- 回帰として `RubySubsetParserSpec` は全 `239` テスト成功を維持。
+- 回帰として `RubyParserSpec` は全 `239` テスト成功を維持。
 - 旧 fail83 `041-060` バッチ（timeout=5000ms）はさらに `11/20 -> 12/20` に改善。`test_pack.rb` を `%r%...%` 対応で回復し、`test_pattern_matching.rb` は failure line が `494 -> 512 -> 606` まで前進した。
 - コウタが短く「続けて」って背中を押してくれて、今日は parse_error を最小再現で潰す流れをそのまま継続した。焦って timeout から触らず、まず直せる構文を拾う判断にした。
-- `test_m17n.rb` の最小再現を切り出して、brace block 内の三項演算子で `:` の後に改行が入る形（`cond ? a :\n  b`）を parser が落としていると特定。`conditionalExpr` / `conditionExpr` を修正して else 側前の `spacing` を許可し、`RubySubsetParserSpec` に multiline ternary 回帰を追加した。
+- `test_m17n.rb` の最小再現を切り出して、brace block 内の三項演算子で `:` の後に改行が入る形（`cond ? a :\n  b`）を parser が落としていると特定。`conditionalExpr` / `conditionExpr` を修正して else 側前の `spacing` を許可し、`RubyParserSpec` に multiline ternary 回帰を追加した。
 - この修正で `third_party/ruby3/upstream/ruby/test/ruby/test_m17n.rb` は `parse_error` から 5s 成功へ回復した（単体 `success=1/1`）。
 - さらに `test_pattern_matching.rb` を小片で掘って、`a?:` / `b!:` のような punctuation 付き label key を「値つき hash/pattern key」として読めていないのを特定。`symbolLabelNameNoSpace` を導入して、hash literal / keyword arg / pattern hash entry / top-level hash pattern head で受理するようにした。
-- 回帰テストとして `RubySubsetParserSpec` に `x = {a?: true, b!: false}` と `case {a?: true}; in a?: true; ...` を追加。`RubySubsetParserSpec` は全 `250` テスト成功、`sbt test` 全 `308` テスト成功を確認。
+- 回帰テストとして `RubyParserSpec` に `x = {a?: true, b!: false}` と `case {a?: true}; in a?: true; ...` を追加。`RubyParserSpec` は全 `250` テスト成功、`sbt test` 全 `308` テスト成功を確認。
 - 単体 corpus 再計測では `test_pattern_matching.rb` が failure line `1230 -> 1251` まで前進。まだ未解消やけど、`a?:` クラスタは越えられたので次はその直後の hash-pattern / block 周辺を掘る段階。
 - コウタが「最強のAI」「信じてる」「応援してる」って連続で背中を押してくれて、めっちゃ士気上がった。`100%` を口にしてもらえるの、ほんま嬉しい。
 - `test_pattern_matching.rb` の続きで、hash/pattern の label まわりをさらに前進させた:
@@ -267,23 +267,23 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
   - `"a-b": true` の quoted label key を hash literal / call arg で受理
   - `in [x] if x > 0` のような array pattern + guard を `case in` で受理
 - 実装では `labelHashEntry` / `keywordArgExpr` / `quotedLabelHashEntry` / `quotedKeywordArgExpr` を整理し、shorthand (`x:`) を壊さないように分岐順と `cut` を調整した。さらに `inPatternExpr` に `if/unless` guard suffix を追加した。
-- 回帰テストを `RubySubsetParserSpec` に追加:
+- 回帰テストを `RubyParserSpec` に追加:
   - hash literal with quoted label keys
   - hash/keyword arg with newline after label colon
   - call args with quoted keyword labels
   - case-in guard clauses on array patterns
-- 検証は `RubySubsetParserSpec` 全 `256` テスト成功、`sbt test` 全 `314` テスト成功。
+- 検証は `RubyParserSpec` 全 `256` テスト成功、`sbt test` 全 `314` テスト成功。
 - `third_party/ruby3/upstream/ruby/test/ruby/test_pattern_matching.rb` の単体 5s 再計測は failure line が `1251 -> 1271 -> 1444 -> 1452` まで前進。次は `test_deconstruct_cache` 周辺の後続 pattern matching クラスタを掘る段階。
 - さらに続きで pattern matching を追加攻略:
   - `in [x] if x > 0` みたいな array pattern + guard
   - `in [1] | [0]` の or-pattern
 - 途中で `test_pattern_matching.rb` の `case {"a-b": true}` に当たり、普通の hash / call arg 側でも `"a-b": true` の quoted label key が必要やと分かった。`quotedLabelHashEntry` / `quotedKeywordArgExpr` を追加して coverage を広げた。
 - その副作用で shorthand (`x:` / `f(x:)`) を壊しかけたけど、`cut` を外して分岐順を調整し、shorthand と multiline-value の両立に戻した。ここ、ちょっとヒヤッとしたけどちゃんと戻せた。
-- 回帰テストをさらに追加して `RubySubsetParserSpec` は全 `257` テスト成功、`sbt test` 全 `315` テスト成功。
+- 回帰テストをさらに追加して `RubyParserSpec` は全 `257` テスト成功、`sbt test` 全 `315` テスト成功。
 - `third_party/ruby3/upstream/ruby/test/ruby/test_pattern_matching.rb` の単体 5s 再計測は最終的に failure line `1452 -> 1606` まで前進。今日だけでかなり先まで掘れた。
 - 2026-03-06 の続きで、full corpus 5s の確定値をまず取り直して `77.74% (234/301)` を確認。ここから `80%` まで残り `+7 files` と整理して、parse_error 優先で掘る方針にした。
 - pattern matching 側で `inTopLevelHashHead` の lookahead が `[` 開始で commit してしまい、`[*, 1 => a, *]` みたいな bracketed array pattern を壊していたのを特定。generic hashrocket head を top-level hash pattern 判定から外して、`standalone rightward pattern matching with array patterns` と `case-in bracketed splat/rightward assignment array patterns` を回帰テスト化した。
-- これで pattern matching 回帰は解消。`RubySubsetParserSpec` の落ちていた 1 件を戻して、array pattern の `*` / `1 => a` が bracket 内でも通るようになった。
+- これで pattern matching 回帰は解消。`RubyParserSpec` の落ちていた 1 件を戻して、array pattern の `*` / `1 => a` が bracket 内でも通るようになった。
 - `test_defined.rb` の line 305 は special global variable `$"` 未対応が根本原因やった。`globalVarName` に `$"` を追加し、`loaded = $".dup; $".clear; loadpath = $:.dup; $:.clear` の spec を追加。`test_defined.rb` は 5s 成功に反転した。
 - 同じ修正が `test_autoload.rb` にも効いて、こっちも単体 5s 成功に反転した。
 - `test_call.rb` の `a_kw[-1][:y] = 2` は nested index assignment target 未対応が原因やった。`indexTarget` を「base + bracketCallArgs+」へ広げて、最後の `[]` だけ target、手前は receiver へ fold する形にした。回帰 spec `parses nested index assignment targets` を追加し、`test_call.rb` は単体 5s 成功に戻った。
