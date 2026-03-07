@@ -356,3 +356,15 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - full corpus 5s: **`99.34% (299/301)`**。残り2件は `test_keyword.rb` (8s) と `test_array.rb` (7s) の timeout。
 - full corpus 10s: **`100.00% (301/301)`**。全ファイルパース成功を確認。
 - 次の課題は `test_keyword.rb` / `test_array.rb` を5秒以内に収める性能改善。
+- assignment系のrule duplication統合（`anyReceiverHead = chainedReceiverAssignableHead / receiverAssignableHead`）と演算子マッチ後のRHS cutを追加。
+- full corpus 5s: **`100.00% (301/301)`** を達成。
+- Prism (CRuby 3.4.1, C実装) との速度比較:
+
+| | Prism (C) | Macro PEG (JVM) | 倍率 |
+|---|---|---|---|
+| 合計 (213 files) | 232ms | 62,236ms | 268x |
+| 平均/file | 1.09ms | 292ms | 268x |
+| test_keyword.rb | 13ms | 4,466ms | 344x |
+| yjit_30k_ifelse | 14.9ms | 182ms | 12x |
+
+- yjit 30kは`takeUntil`最適化で12倍差まで縮まるが、通常ファイルは300-500倍差。チューニング余地はidentifier/number一括読み、token関数最適化、List allocation削減などに残る。
