@@ -43,7 +43,9 @@ object Ast {
           (env(name) || ruleNames(name)) && args.forall(a => checkDefined(a, env))
         case Identifier(_, name) => env(name) || ruleNames(name)
         case Function(_, args, body) => checkDefined(body, env ++ args.toSet)
+        case Labeled(_, _, b) => checkDefined(b, env)
         case Debug(_, b) => checkDefined(b, env)
+        case SemanticAction(_, _) => true
         case _ => true
       }
       if(!rules.forall(r => checkDefined(r.body, r.args.toSet))) return false
@@ -67,6 +69,8 @@ object Ast {
         case Call(_, name, _) => if(env(name)) true else nullable.getOrElse(name, false)
         case Identifier(_, name) => if(env(name)) true else nullable.getOrElse(name, false)
         case Function(_, args, body) => exprNullable(body, env ++ args.toSet)
+        case Labeled(_, _, b) => exprNullable(b, env)
+        case SemanticAction(_, _) => true
         case Debug(_, b) => exprNullable(b, env)
       }
 
@@ -92,6 +96,8 @@ object Ast {
         case NotPredicate(_, b) => checkRepetition(b, env)
         case Call(_, _, args) => args.forall(a => checkRepetition(a, env))
         case Function(_, args, body) => checkRepetition(body, env ++ args.toSet)
+        case Labeled(_, _, b) => checkRepetition(b, env)
+        case SemanticAction(_, _) => true
         case Debug(_, b) => checkRepetition(b, env)
         case _ => true
       }
@@ -118,6 +124,8 @@ object Ast {
             leadsToSelf(sym, ruleMapping(name).body, ruleMapping(name).args.toSet, visited + name)
           else false
         case Function(_, args, body) => leadsToSelf(sym, body, env ++ args.toSet, visited)
+        case Labeled(_, _, b) => leadsToSelf(sym, b, env, visited)
+        case SemanticAction(_, _) => false
         case Debug(_, b) => leadsToSelf(sym, b, env, visited)
         case _ => false
       }
@@ -226,6 +234,12 @@ object Ast {
   case class Identifier(pos: Position, name: Symbol) extends Expression
 
   case class Function(pos: Position, args: List[Symbol], body: Expression) extends Expression
+
+  /** Labeled capture: `name:expr` — binds the match result to a name for use in semantic actions. */
+  case class Labeled(pos: Position, label: String, body: Expression) extends Expression
+
+  /** Semantic action: `{ scalaCode }` — embedded Scala code that transforms captured values into AST nodes. */
+  case class SemanticAction(pos: Position, code: String) extends Expression
 
   sealed abstract class Type(pos: Position)
   case class SimpleType(pos: Position) extends Type(pos)

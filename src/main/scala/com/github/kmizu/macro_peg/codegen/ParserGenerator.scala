@@ -135,6 +135,10 @@ object ParserGenerator {
         }
       case Function(pos, _, _) =>
         Left(GenerationError(pos, "lambda/function expression is not supported by first-order combinator backend", Some("use higher-order fallback backend")))
+      case Labeled(_, label, b) =>
+        emitExpression(b).map(be => s"($be)")
+      case SemanticAction(_, code) =>
+        Right(s"""success(()).map(_ => { $code })""")
       case Debug(_, b) =>
         emitExpression(b).map(be => s"($be).display")
     }
