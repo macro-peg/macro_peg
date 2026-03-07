@@ -16,28 +16,39 @@ object RubyCorpusRunner {
     "third_party/ruby3/upstream/ruby/bootstraptest",
     "third_party/ruby3/upstream/ruby/test/prism"
   )
-  private val warmupSource: String =
-    """class Warmup
-      |  def run(arg, kw: 1, &block)
-      |    value = [arg, kw, {foo: kw}]
-      |    value.each do |item|
-      |      block&.call(item)
-      |    end
-      |    (value.first, self.class.name), *value[0, 1], (value[1], value.last[:foo]) = ["x", "y"], 1, 2, ["z", 3]
-      |    case value
-      |    in [head, *tail]
-      |      head
-      |    else
-      |      nil
-      |    end
-      |  end
-      |end
-      |
-      |Warmup.new.run(1, kw: 2) { |x| x }
-      |assert_separately(%W[- #{'src'}], __FILE__, __LINE__, <<-'eom', timeout: Float::INFINITY)
-      |  value = /#{Warmup}/
-      |eom
-      |""".stripMargin
+  private val warmupSource: String = {
+    val base =
+      """class Warmup
+        |  def run(arg, kw: 1, &block)
+        |    value = [arg, kw, {foo: kw}]
+        |    value.each do |item|
+        |      block&.call(item)
+        |    end
+        |    (value.first, self.class.name), *value[0, 1], (value[1], value.last[:foo]) = ["x", "y"], 1, 2, ["z", 3]
+        |    case value
+        |    in [head, *tail]
+        |      head
+        |    else
+        |      nil
+        |    end
+        |  end
+        |end
+        |
+        |Warmup.new.run(1, kw: 2) { |x| x }
+        |assert_separately(%W[- #{'src'}], __FILE__, __LINE__, <<-'eom', timeout: Float::INFINITY)
+        |  value = /#{Warmup}/
+        |eom
+        |""".stripMargin
+    // Add assert_equal patterns similar to test_keyword.rb for JIT warmup
+    val assertBlock = (1 to 50).map { i =>
+      s"""assert_equal([[$i, h1], {}], o.foo(:bar, $i, :a=>1))
+         |assert_equal([$i, h1], o.foo(:baz, $i, **h1))
+         |assert_equal([[$i], h1], o.foo(:dbar, $i, a: 1))
+         |assert_nil(c.send(:m, **{}))
+         |""".stripMargin
+    }.mkString
+    (base + "\n" + assertBlock) * 3
+  }
 
   private final case class FailureInfo(path: Path, reason: String, message: String, elapsedMs: Long)
   private final case class ParseTiming(path: Path, elapsedMs: Long, status: String)

@@ -1912,12 +1912,14 @@ class RubyParserSpec extends AnyFunSpec with Diagrams {
         ast == Program(List(
           IfExpr(
             BinaryOp(
-              BinaryOp(
-                Call(Some(SelfExpr(UnknownSpan)), "columns", Nil, UnknownSpan),
-                "||",
-                IntLiteral(0, UnknownSpan),
-                UnknownSpan
-              ),
+              Call(Some(SelfExpr(UnknownSpan)), "columns=", List(
+                BinaryOp(
+                  Call(Some(SelfExpr(UnknownSpan)), "columns", Nil, UnknownSpan),
+                  "||",
+                  IntLiteral(0, UnknownSpan),
+                  UnknownSpan
+                )
+              ), UnknownSpan),
               "<",
               LocalVar("n", UnknownSpan),
               UnknownSpan

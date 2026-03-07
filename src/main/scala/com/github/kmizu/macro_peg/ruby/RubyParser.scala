@@ -1861,27 +1861,17 @@ object RubyParser {
         }
     }
 
-  private lazy val assignExpr: P[Expr] =
-    (((assignableName <~ assignEq.and).and ~> assignableName) ~ assignEq ~ spacing ~ assignValueExpr).map {
-      case name ~ _ ~ _ ~ value => AssignExpr(name, value)
-    }
+  private lazy val receiverAssignableSeparator: P[String] =
+    sym(".") / sym("&.") / sym("::")
 
-  private lazy val multiAssignExpr: P[Expr] =
-    (((multiAssignNames <~ assignEq.and).and ~> multiAssignNames) ~ assignEq ~ spacing ~ assignValueExpr).map {
-      case names ~ _ ~ _ ~ value => MultiAssignExpr(names, value)
-    }
+  private lazy val receiverAssignableMethodName: P[String] =
+    token(identifierNoSpace / constNameNoSpace / receiverKeywordMethodNameNoSpace)
 
   private lazy val receiverAssignableHead: P[Expr ~ String] =
     (receiverForCommand <~ receiverAssignableSeparator) ~ receiverAssignableMethodName
 
   private lazy val chainedReceiverSegment: P[String] =
     (receiverAssignableSeparator ~ receiverAssignableMethodName).map(_._2)
-
-  private lazy val receiverAssignableSeparator: P[String] =
-    sym(".") / sym("&.") / sym("::")
-
-  private lazy val receiverAssignableMethodName: P[String] =
-    token(identifierNoSpace / constNameNoSpace / receiverKeywordMethodNameNoSpace)
 
   private lazy val chainedReceiverAssignableHead: P[Expr ~ String] =
     (receiverForCommand ~ chainedReceiverSegment ~ chainedReceiverSegment.+).map {
@@ -1894,84 +1884,95 @@ object RubyParser {
         new ~(receiverExpr, segments.last)
     }
 
-  private lazy val chainedReceiverAssignExpr: P[Expr] =
-    (((chainedReceiverAssignableHead <~ assignEq.and).and ~> chainedReceiverAssignableHead) ~ assignEq ~ spacing ~ assignValueExpr).map {
-      case receiver ~ name ~ _ ~ _ ~ value =>
-        Call(Some(receiver), s"${name}=", List(value))
+  // Unified receiver head: chained first (longer match), then single-segment
+  private lazy val anyReceiverHead: P[Expr ~ String] =
+    chainedReceiverAssignableHead / receiverAssignableHead
+
+  // All assignment operators for lookahead
+  private lazy val anyAssignOp: P[String] =
+    assignEq / sym("||=") / sym("&&=") / compoundAssignOperator
+
+  // Helper: build receiver assignment from head + operator + value
+  private def receiverAssign(head: P[Expr ~ String], op: P[String], rhs: P[Expr],
+                              transform: (Expr, String, String, Expr) => Expr): P[Expr] =
+    (((head <~ op.and).and ~> head) ~ op ~ (spacing ~> rhs).cut).map {
+      case receiver ~ name ~ operator ~ value => transform(receiver, name, operator, value)
     }
 
+  // Receiver: obj.method = value
   private lazy val receiverAssignExpr: P[Expr] =
-    (((receiverAssignableHead <~ assignEq.and).and ~> receiverAssignableHead) ~ assignEq ~ spacing ~ assignValueExpr).map {
-      case receiver ~ name ~ _ ~ _ ~ value =>
-        Call(Some(receiver), s"${name}=", List(value))
-    }
+    receiverAssign(anyReceiverHead, assignEq, assignValueExpr,
+      (receiver, name, _, value) => Call(Some(receiver), s"${name}=", List(value)))
 
+  // Receiver: obj.method ||= value, obj.method &&= value
   private lazy val receiverLogicalAssignExpr: P[Expr] =
-    (((chainedReceiverAssignableHead <~ (sym("||=") / sym("&&=")).and).and ~> chainedReceiverAssignableHead) ~ (sym("||=") / sym("&&=")) ~ spacing ~ refer(expr)).map {
-      case receiver ~ name ~ op ~ _ ~ value =>
+    receiverAssign(anyReceiverHead, sym("||=") / sym("&&="), refer(expr),
+      (receiver, name, op, value) => {
         val lhs = Call(Some(receiver), name, Nil)
-        val underlying = if(op == "||=") "||" else "&&"
+        val underlying = if (op == "||=") "||" else "&&"
         Call(Some(receiver), s"${name}=", List(BinaryOp(lhs, underlying, value)))
-    } /
-    (((receiverAssignableHead <~ (sym("||=") / sym("&&=")).and).and ~> receiverAssignableHead) ~ (sym("||=") / sym("&&=")) ~ spacing ~ refer(expr)).map {
-      case receiver ~ name ~ op ~ _ ~ value =>
-        val lhs = Call(Some(receiver), name, Nil)
-        val underlying = if(op == "||=") "||" else "&&"
-        BinaryOp(lhs, underlying, value)
-    }
+      })
 
+  // Receiver: obj.method += value, etc.
+  private lazy val receiverCompoundAssignExpr: P[Expr] =
+    receiverAssign(anyReceiverHead, compoundAssignOperator, refer(expr),
+      (receiver, name, op, value) => {
+        val underlying = op.dropRight(1)
+        val lhs = Call(Some(receiver), name, Nil)
+        Call(Some(receiver), s"${name}=", List(BinaryOp(lhs, underlying, value)))
+      })
+
+  // Index: obj[idx] = value
   private lazy val indexAssignExpr: P[Expr] =
-    (((indexTarget <~ assignEq.and).and ~> indexTarget) ~ assignEq ~ spacing ~ assignValueExpr).map {
-      case (receiver, args) ~ _ ~ _ ~ value =>
+    (((indexTarget <~ assignEq.and).and ~> indexTarget) ~ assignEq ~ (spacing ~> assignValueExpr).cut).map {
+      case (receiver, args) ~ _ ~ value =>
         Call(Some(receiver), "[]=", args :+ value)
     }
 
+  // Index: obj[idx] ||= / &&= value
   private lazy val indexLogicalAssignExpr: P[Expr] =
-    (((indexTarget <~ (sym("||=") / sym("&&=")).and).and ~> indexTarget) ~ (sym("||=") / sym("&&=")) ~ spacing ~ refer(expr)).map {
-      case (receiver, args) ~ op ~ _ ~ value =>
+    (((indexTarget <~ (sym("||=") / sym("&&=")).and).and ~> indexTarget) ~ (sym("||=") / sym("&&=")) ~ (spacing ~> refer(expr)).cut).map {
+      case (receiver, args) ~ op ~ value =>
         val lhs = Call(Some(receiver), "[]", args)
-        val underlying = if(op == "||=") "||" else "&&"
-        val rhs = BinaryOp(lhs, underlying, value)
-        Call(Some(receiver), "[]=", args :+ rhs)
+        val underlying = if (op == "||=") "||" else "&&"
+        Call(Some(receiver), "[]=", args :+ BinaryOp(lhs, underlying, value))
     }
 
+  // Index: obj[idx] += value, etc.
   private lazy val indexCompoundAssignExpr: P[Expr] =
-    (((indexTarget <~ compoundAssignOperator.and).and ~> indexTarget) ~ compoundAssignOperator ~ spacing ~ refer(expr)).map {
-      case (receiver, args) ~ op ~ _ ~ value =>
+    (((indexTarget <~ compoundAssignOperator.and).and ~> indexTarget) ~ compoundAssignOperator ~ (spacing ~> refer(expr)).cut).map {
+      case (receiver, args) ~ op ~ value =>
         val underlying = op.dropRight(1)
         val lhs = Call(Some(receiver), "[]", args)
-        val rhs = BinaryOp(lhs, underlying, value)
-        Call(Some(receiver), "[]=", args :+ rhs)
+        Call(Some(receiver), "[]=", args :+ BinaryOp(lhs, underlying, value))
     }
 
-  private lazy val receiverCompoundAssignExpr: P[Expr] =
-    (((chainedReceiverAssignableHead <~ compoundAssignOperator.and).and ~> chainedReceiverAssignableHead) ~ compoundAssignOperator ~ spacing ~ refer(expr)).map {
-      case receiver ~ name ~ op ~ _ ~ value =>
-        val underlying = op.dropRight(1)
-        val lhs = Call(Some(receiver), name, Nil)
-        val rhs = BinaryOp(lhs, underlying, value)
-        Call(Some(receiver), s"${name}=", List(rhs))
-    } /
-    (((receiverAssignableHead <~ compoundAssignOperator.and).and ~> receiverAssignableHead) ~ compoundAssignOperator ~ spacing ~ refer(expr)).map {
-      case receiver ~ name ~ op ~ _ ~ value =>
-        val underlying = op.dropRight(1)
-        val lhs = Call(Some(receiver), name, Nil)
-        val rhs = BinaryOp(lhs, underlying, value)
-        Call(Some(receiver), s"${name}=", List(rhs))
+  // Name: name = value
+  private lazy val assignExpr: P[Expr] =
+    (((assignableName <~ assignEq.and).and ~> assignableName) ~ assignEq ~ (spacing ~> assignValueExpr).cut).map {
+      case name ~ _ ~ value => AssignExpr(name, value)
     }
 
+  // Name: name ||= / &&= value
   private lazy val logicalAssignExpr: P[Expr] =
-    (((assignableName <~ (sym("||=") / sym("&&=")).and).and ~> assignableName) ~ (sym("||=") / sym("&&=")) ~ spacing ~ refer(expr)).map {
-      case name ~ op ~ _ ~ value =>
-        val underlying = if(op == "||=") "||" else "&&"
+    (((assignableName <~ (sym("||=") / sym("&&=")).and).and ~> assignableName) ~ (sym("||=") / sym("&&=")) ~ (spacing ~> refer(expr)).cut).map {
+      case name ~ op ~ value =>
+        val underlying = if (op == "||=") "||" else "&&"
         AssignExpr(name, BinaryOp(assignableAsExpr(name), underlying, value))
     }
 
+  // Name: name += value, etc.
   private lazy val compoundAssignExpr: P[Expr] =
-    (((assignableName <~ compoundAssignOperator.and).and ~> assignableName) ~ compoundAssignOperator ~ spacing ~ refer(expr)).map {
-      case name ~ op ~ _ ~ value =>
+    (((assignableName <~ compoundAssignOperator.and).and ~> assignableName) ~ compoundAssignOperator ~ (spacing ~> refer(expr)).cut).map {
+      case name ~ op ~ value =>
         val underlying = op.dropRight(1)
         AssignExpr(name, BinaryOp(assignableAsExpr(name), underlying, value))
+    }
+
+  // Multi-assign: a, b = values
+  private lazy val multiAssignExpr: P[Expr] =
+    (((multiAssignNames <~ assignEq.and).and ~> multiAssignNames) ~ assignEq ~ (spacing ~> assignValueExpr).cut).map {
+      case names ~ _ ~ value => MultiAssignExpr(names, value)
     }
 
   // Receiver-based assignments require "expr.name =" pattern
@@ -1979,8 +1980,7 @@ object RubyParser {
     (receiverForCommand ~ receiverAssignableSeparator).and
 
   private lazy val receiverAssignmentExprs: P[Expr] =
-    chainedReceiverAssignExpr /
-      receiverAssignExpr /
+    receiverAssignExpr /
       receiverLogicalAssignExpr /
       receiverCompoundAssignExpr
 
@@ -2248,11 +2248,14 @@ object RubyParser {
       case value ~ _ ~ pattern => ExprStmt(BinaryOp(value, "=>", pattern))
     }
 
+  private lazy val constAssignGuard: P[Any] = constStart.and
+  private lazy val assignDefGuard: P[Any] = (assignableName ~ assignEq ~ kw("def")).and
+
   private lazy val simpleStatement: P[Statement] =
     (kw("return").and ~> returnStmt) /
       (kw("retry").and ~> retryStmt) /
-      constAssignStmt /
-      assignDefStmt /
+      (constAssignGuard ~> constAssignStmt) /
+      (assignDefGuard ~> assignDefStmt) /
       rightwardAssignStmt /
       exprStatement
 
