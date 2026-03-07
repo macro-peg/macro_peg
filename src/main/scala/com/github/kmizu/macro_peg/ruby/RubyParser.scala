@@ -4,7 +4,7 @@ import com.github.kmizu.macro_peg.combinator.MacroParsers._
 import com.github.kmizu.macro_peg.ruby.RubyAst._
 import scala.util.Try
 
-object RubyFullParser {
+object RubyParser {
   private type P[+A] = MacroParser[A]
   private case class PendingHeredoc(
     token: String,

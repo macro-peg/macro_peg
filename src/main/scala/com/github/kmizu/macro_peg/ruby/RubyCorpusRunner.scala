@@ -48,7 +48,7 @@ object RubyCorpusRunner {
     val worker = new Thread(
       () => {
         try {
-          result = RubyFullParser.parse(input)
+          result = RubyParser.parse(input)
         } catch {
           case t: Throwable =>
             thrown = t
@@ -159,7 +159,7 @@ object RubyCorpusRunner {
 
     if(warmupRounds > 0) {
       (0 until warmupRounds).foreach { _ =>
-        RubyFullParser.parse(warmupSource)
+        RubyParser.parse(warmupSource)
       }
     }
 

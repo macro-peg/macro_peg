@@ -4,11 +4,11 @@ import com.github.kmizu.macro_peg.ruby.RubyAst._
 import org.scalatest.diagrams.Diagrams
 import org.scalatest.funspec.AnyFunSpec
 
-class RubyFullParserSpec extends AnyFunSpec with Diagrams {
-  describe("RubyFullParser") {
+class RubyParserSpec extends AnyFunSpec with Diagrams {
+  describe("RubyParser") {
     it("parses calls and binary expressions into AST") {
       val input = "foo(1, 2).bar(3); x = 1 + 2 * 3"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -34,7 +34,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses class/def structure and nested statements") {
       val input = "class User; def greet(name); \"hi\"; end; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -55,7 +55,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses def parameters without parentheses") {
       val input = "def add as; as; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -72,7 +72,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses array and hash literals") {
       val input = "x = [1, 2, {\"a\" => 3}]"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -91,31 +91,31 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses hash literals with punctuated label keys") {
       val input = "x = {a?: true, b!: false}"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses hash literals with quoted label keys") {
       val input = """x = {"a-b": true}"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses hash literals with newline after label colon") {
       val input =
         """x = {a:
           |  1}""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses keyword args with newline after label colon") {
       val input =
         """foo(a:
           |  1)""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses array literals with splat elements") {
       val input = "x = [*head, 1]"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -134,24 +134,24 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses parenthesized postfix if expression in splat array element") {
       val input = "x = [*((params.rest.name || :*) if params.rest && !params.rest.is_a?(ImplicitRestNode))]"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses array literals with local assignment elements") {
       val input = """a = ["", src="", ec, nil, 50, :partial_input=>true]"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("returns parse failure for broken syntax") {
       val input = "def greet(; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isLeft)
     }
 
     it("parses module with if/unless and symbols") {
       val input = "module M; if flag; :ok; else; :ng; end; unless done; x = :wait; else; x = :done; end; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -180,18 +180,18 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses class definition on rhs of logical and") {
       val input = "ready and class C; end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses interpolated symbol assignment") {
       val input = "x = :\"hello\""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed == Right(Program(List(Assign("x", SymbolLiteral("hello", UnknownSpan), UnknownSpan)), UnknownSpan)))
     }
 
     it("parses if with elsif chain") {
       val input = "if a; :x; elsif b; :y; else; :z; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -215,7 +215,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses postfix if/unless modifiers") {
       val input = "x = 1 if ready; y = 2 unless done"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -228,7 +228,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses postfix rescue modifier") {
       val input = "r.close rescue nil"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -253,7 +253,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses parenthesized rescue expression in receiver chain") {
       val input = "v = (foo rescue $!).local_variables"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -264,7 +264,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |rescue E
           |  x = 2
           |end while ready""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -295,7 +295,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses command-style calls without parentheses") {
       val input = "puts :ok; add 1, 2"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -314,7 +314,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses float literal in command-style call arguments") {
       val input = "sleep 0.1"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -332,7 +332,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
         """assert_equal "a",
           |             "b"
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -347,7 +347,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses command-style call with parenthesized first arg and trailing args") {
       val input = """assert_equal (+"ア").force_encoding(Encoding::SHIFT_JIS), slice"""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -377,7 +377,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses command-style call with postfix modifier") {
       val input = "log 1, 2 if ready"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -394,7 +394,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses command-style call inside def body") {
       val input = "def greet(name); puts name; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -413,7 +413,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses receiver command-style calls without parentheses") {
       val input = "logger.info 1, 2"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -428,7 +428,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses destructured block parameters") {
       val input = "tests.each do |(insn, expr, *a)| insn; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -451,19 +451,19 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses block parameter default without consuming closing pipe") {
       val input = "p = Proc.new{|b, c=42| :ok}"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses block-local parameters after semicolon") {
       val input = "tap {|;x| x = x; break local_variables}"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses block keyword defaults and trailing comma in params") {
       val input = "categories.map {|category, str: \"foo\", num: 424242, | [category, str, num] }"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -474,7 +474,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  *|
           |  bug6115
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multiline block parameters with array defaults") {
@@ -485,7 +485,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  *|
           |  methods
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses do-block parameters on the next line") {
@@ -494,7 +494,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  |b, e = 'end', pre = nil, post = nil|
           |  [b, e, pre, post]
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses brace-block parameters on the next line") {
@@ -503,12 +503,12 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  |s|
           |  s.to_s
           |}""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses do-end block attached to call") {
       val input = "items.each do |x| puts x; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -535,19 +535,19 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  define_method("x")
           |end
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("does not split keyword-prefix local vars in chained calls") {
       val input = "method_node = class_node.body.body.first"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses brace block attached to call") {
       val input = "add(1, 2) { |x| puts x }"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -570,7 +570,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses brace block with trailing space before close") {
       val input = "err_reader = Thread.new{ r.read }"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -578,7 +578,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
       val input =
         """x = 1
           |y = 2""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -593,7 +593,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
       val input =
         """Foo.foo # comment
           |foo""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -602,7 +602,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
         """items.each(1) do |x|
           |  puts x
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -630,7 +630,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |else
           |  x = 2
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -647,7 +647,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses chained dot calls with no-arg methods in expressions") {
       val input = "x = user.profile.name"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -675,7 +675,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses block attached to chained call expression") {
       val input = "foo.bar(1).baz do |x| puts x; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -703,13 +703,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses command call arg with spaced brace-block chain") {
       val input = "puts tests.map {|path| File.basename(path) }.inspect"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses safe-navigation call with operator method name") {
       val input = "x = timeout&.*(timeout_scale)"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -730,13 +730,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses dot-call shorthand with anonymous keyword forwarding") {
       val input = "assert_equal(false, m.(**{}).frozen?)"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses return statement in method body") {
       val input = "def f; return 1; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -748,7 +748,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses return with multiple values") {
       val input = "def f; return out, err; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -770,7 +770,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses bare return with postfix modifier") {
       val input = "return if done"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -787,13 +787,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses return with postfix if and complex condition") {
       val input = """return if RUBY_ENGINE != "ruby""""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses parenthesized return with stacked postfix modifiers") {
       val input = "def obj.test; x = nil; _y = (return until x unless x); end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses command arg starting with case expression") {
@@ -803,13 +803,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |else :other
           |end
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses self expression and self receiver command call") {
       val input = "x = self.name; self.log 1"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -829,7 +829,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses keyword-named receiver method and chained command args") {
       val input = "x = self.class; self.class.add self"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -854,12 +854,12 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses receiver calls to self keyword method names") {
       val input = "assert_raise(RuntimeError){tp_store.self}"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses receiver calls to begin/end keyword method names") {
       val input = "x = 1.step.begin; y = 1.step.end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -880,7 +880,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses constant path expressions") {
       val input = "x = JSON::Parser"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -892,7 +892,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses top-level constant path expressions") {
       val input = "x = ::JSON::Parser"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -904,7 +904,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses :: method call on constant path receiver") {
       val input = "x = BOX1::BOX_B::yay"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -920,7 +920,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses module/class names with constant paths") {
       val input = "module A::B; class C::D; end; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -936,7 +936,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses single-quoted string literals") {
       val input = "msg = 'ok'"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -948,7 +948,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses adjacent string literals as one argument") {
       val input = """assert_equal("ab", "a" "b")"""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -963,7 +963,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses percent-quoted string literals") {
       val input = "assert_equal %q{ok}, %{ng}"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -978,7 +978,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses bracket index access expression") {
       val input = "x = ENV[\"HOME\"]"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -994,13 +994,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses percent-quoted strings with pipe delimiters") {
       val input = """assert_equal('u', %Q|\u{FC}|)"""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses bracket call with keyword label arguments") {
       val input = "paths = Dir[glob_pattern, base: BASE]"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1024,7 +1024,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses class definition with superclass") {
       val input = "class Child < Parent; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1048,7 +1048,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |ensure
           |  x = 3
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1078,7 +1078,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |ensure
           |  cleanup
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1114,7 +1114,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |rescue RangeError
           |  recover
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -1125,7 +1125,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |ensure
           |  x = 2
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1159,7 +1159,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |ensure
           |  x = 4
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1200,7 +1200,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |ensure
           |  x = 4
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1241,7 +1241,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
         """class << self
           |  def x; 1; end
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1259,13 +1259,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses alias statement for operator method names in singleton class") {
       val input = "class C; class << self; alias [] new; end; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses alias for power operator method name") {
       val input = "class C; alias ** +; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -1276,7 +1276,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |$z = 3
           |w = @x + @@y
           |v = $z""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1292,7 +1292,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses special global variable $?") {
       val input = "status = $?"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1304,13 +1304,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses unicode local variable names") {
       val input = "α = 1 or flunk"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses dashed special global variables like $-0") {
       val input = "x = $-0; $-0 = \",\""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1323,7 +1323,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses multiple assignment from expression") {
       val input = "faildesc, t = super"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1339,7 +1339,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses assignment whose rhs is def expression") {
       val input = "$def_retval_in_namespace = def boooo; \"boo\"; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1355,7 +1355,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |for x in (1..5)
           |  sum += x
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1375,7 +1375,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses open-ended range expressions") {
       val input = "a = items[1..]; b = items[..limit]"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1406,7 +1406,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses exclusive range expressions with hex end") {
       val input = "x = 0...0x100"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1427,7 +1427,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |rescue LoadError
           |  retry
           |end""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1452,7 +1452,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses no-arg bare call with block chained by method calls") {
       val input = "lambda{ 1 }.call.call"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1485,7 +1485,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses block-pass parameter and argument") {
       val input = "def each(&block); [1, 2].each(&block); end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1512,7 +1512,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses splat and keyword-splat params and call args") {
       val input = "def f(*args, **opts, &block); g(*args, **opts, &block); end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1539,7 +1539,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses keyword parameters with defaults in def") {
       val input = "def f(opt = '', timeout: BT.timeout, **argh); end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1556,7 +1556,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses nameless rest parameters in def") {
       val input = "def method_missing(name, *); name; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1573,19 +1573,19 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses singleton def with parenthesized receiver expression") {
       val input = "def (o = Object.new).each; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses singleton def on nil receiver") {
       val input = "def nil.test_binding; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses forwarding (...) parameter and argument") {
       val input = "def method_missing(...); ::String.public_send(...); end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1612,7 +1612,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses bare visibility keyword call in class body") {
       val input = "class C; private; def f; true; end; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1631,23 +1631,23 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses ruby2_keywords decorated def") {
       val input = "ruby2_keywords def foo(*args); args; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses bare ruby2_keywords call in class body") {
       val input = "class C; ruby2_keywords; end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses private call with def expression argument") {
       val input = "private(def foo = :ok)"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses lambda literal argument with bare parameter") {
       val input = "add_assertion testsrc, -> as do; as.id = 1; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1689,7 +1689,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |         z) do
           |  z
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multiline def parameters") {
@@ -1701,7 +1701,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |)
           |  script
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multiline bare def parameters") {
@@ -1709,12 +1709,12 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
         """def source_location_test a=1,
           |  b=2
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses symbol block-pass argument") {
       val input = "ts.each(&:kill)"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1734,7 +1734,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses symbol block-pass argument with keyword symbol") {
       val input = "seq.first(5).map(&:class)"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1754,7 +1754,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses method names with punctuation and unary/binary operators") {
       val input = "if !Dir.respond_to?(:mktmpdir) || force; ok! 1; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1785,7 +1785,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses modulo operator in expression") {
       val input = "msg = '%.2f' % sec"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1806,7 +1806,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses bare no-arg punctuated call in condition") {
       val input = "if block_given?; :ok; else; :ng; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1823,7 +1823,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses receiver attribute assignment as expression statement") {
       val input = "self.columns = indent"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1838,7 +1838,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses constant receiver assignment with postfix if modifier") {
       val input = "BT.tty = $stderr.tty? if BT.tty.nil?"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1872,7 +1872,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses chained receiver assignment") {
       val input = "parser.diagnostics.all_errors_are_fatal = true"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses consecutive opposite-side division expressions") {
@@ -1885,27 +1885,27 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  end
           |end
           |""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses division argument followed by slash-containing string argument") {
       val input = """f(c / a, "x / y")"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses shift expressions with assignment on the rhs") {
       val input = "objs << obj = Object.new"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses beginless range argument without treating it as forwarding arg") {
       val input = "assert_raise_with_message(*exc) {@o.clamp(...2)}"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses receiver logical assignment inside condition") {
       val input = "if (self.columns ||= 0) < n; :ok; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1932,7 +1932,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses index logical assignment expression") {
       val input = "colors[n] ||= c"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1960,7 +1960,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses index compound assignment expression") {
       val input = "memo[0] += i"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -1988,7 +1988,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses receiver compound assignment") {
       val input = "self.columns += 1"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2015,37 +2015,37 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses receiver assignments to const-style and :: method names") {
       val input = "o.foo = o.Foo = o::baz = nil; o.bar = o.Bar = o::qux = 1"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses receiver assignments to keyword-named methods") {
       val input = "o.begin = -10; o.end = 0"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses grouped multi-assign targets") {
       val input = "(x1.y1.z, x2.x5), _a = [r1, r2], 7"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses grouped multi-assign targets after splat targets") {
       val input = "*x2[1, 2, 3], (x3[4], x4.x5) = 6, 7, [r2, 8]"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses nested grouped multi-assign targets") {
       val input = "((x1.y1.z, x1.x5), _a), *x2[1, 2, 3], ((x3[4], x4.x5), _b) = [[r1, 5], 10], 6, 7, [[r2, 8], 11]"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses chained receiver logical assignments") {
       val input = "z.x.x ||= 1; z.x.x &&= 2"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses variable minus compound assignment") {
       val input = "w -= 1"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2061,7 +2061,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses ternary operator in call arguments") {
       val input = "x = Test::JobServer.max_jobs(wn > 0 ? wn : 1024)"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2089,7 +2089,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses receiver logical assignment with regex-match ternary") {
       val input = """BT.wn ||= /-j(\d+)?/ =~ (ENV["MAKEFLAGS"] || ENV["MFLAGS"]) ? $1.to_i : 1"""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -2099,13 +2099,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  $& == "a" ? "\xc2\xa1".force_encoding("euc-jp") :
           |              "\xc2\xa1".force_encoding("utf-8")
           |}""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses def name ending with question mark") {
       val input = "def empty?; true; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2123,13 +2123,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  def self.<=>(other); 0; end
           |end
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses nested percent-q parentheses strings") {
       val input = "x = %q( Object.const_defined?(:C) )"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2141,7 +2141,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses regular expression literal in call arguments") {
       val input = "assert_match /\\\\Aok\\\\z/, value"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2156,12 +2156,12 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses regex literals that start with a space character") {
       val input = """s = pat2.gsub(/ /, "")"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses interpolated double-quoted strings with nested quotes") {
       val input = """x = "\e[;#{colors["pass"] || "32"}m""""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2173,7 +2173,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses backtick command literals with call chaining") {
       val input = "target_version = `#{BT.ruby} -v`.chomp"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2194,7 +2194,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses percent-x command literals with call chaining") {
       val input = "x = %x(objdump --section=.text --syms #{path}).split(\"\\n\")"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2215,7 +2215,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses symbol literals with variable-like names") {
       val input = "trace_var(:$a); trace_var(:@x); trace_var(:@@y)"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2229,7 +2229,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses symbol literals with method suffix and operator names") {
       val input = "assert_operator(x, :!=, y); assert_predicate(value, :frozen?)"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2258,7 +2258,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses unicode bare symbol literals") {
       val input = "name = :ą"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2270,7 +2270,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses interpolated double-quoted symbol literals") {
       val input = """name = :"test_#{path}""""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2282,7 +2282,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses uppercase percent-Q strings") {
       val input = "message = %Q{ENSURE\\n}"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2294,7 +2294,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses percent word-array literals") {
       val input = "keywords = %w[break next redo]"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2314,7 +2314,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses percent symbol-array literals") {
       val input = "keywords = %i[break next redo]"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2334,7 +2334,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses regex match operators") {
       val input = "/freebsd/ =~ RUBY_PLATFORM or skip"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2364,7 +2364,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |=end
           |ok 1
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2376,7 +2376,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses percent-r regex literals in command calls") {
       val input = """assert_match %r"Invalid #{keyword}\\b", value"""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2396,7 +2396,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses percent-r regex literals with colon delimiter") {
       val input = """assert_equal(':', %r:\::.source, bug5484)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multiline regex literals with flags") {
@@ -2405,17 +2405,17 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |   \S+\z/x !~ line
           |  raise line
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses call arguments with regex literals that start with spaces") {
       val input = """mount.scan(/ on (\S+) type (\S+) /) { mountpoints << [$1, $2] }"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses bracket arguments with x-flag regex literals that start with spaces") {
       val input = """"foobarbaz"[/  b  .  .  /x]"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multiline or with command-call rhs") {
@@ -2423,7 +2423,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
         """/freebsd/ =~ RUBY_PLATFORM or
           |assert_finish 5, %q{ok}
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2452,7 +2452,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |            current.is_a?(XStringNode)) ||
           |!current.opening&.start_with?("<<")
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -2462,7 +2462,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  "file: #{test.filename}, line #{test.line_number}, " +
           |  "type: #{test.type}"
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -2471,7 +2471,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
         """x = 1 + \
           |  2
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -2482,13 +2482,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  "actual: #{actual.inspect}"
           |}
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses label-style hash entries") {
       val input = "opts = { frozen_string_literal: true, mode: :strict }"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2507,7 +2507,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses shorthand label-style hash entries") {
       val input = "assert_equal({x: 1, y: 2}, {x:, y:})"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multiline hash entries with nested hash values") {
@@ -2519,7 +2519,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  }
           |}
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2540,7 +2540,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses call arguments with keyword labels") {
       val input = """Prism.parse("1", command_line: "p", line: 4)"""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2564,7 +2564,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses call arguments with reserved keyword labels") {
       val input = """Time.new(2021, 12, 25, in: "+09:00")"""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2589,22 +2589,22 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses call arguments with quoted keyword labels") {
       val input = """f("a": -1)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses no-space symbol command calls after keywords") {
       val input = "if true then not_label:foo end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses no-space symbol command calls inside interpolation") {
       val input = """"#{not_label:foo}""""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses call arguments with shorthand keyword labels") {
       val input = "f(x:, y:)"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2627,7 +2627,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses call arguments with hash-rocket entries") {
       val input = """assert_normal_exit %q{x}, "msg", ["INT"], :timeout => 10 or break"""
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -2639,12 +2639,12 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  'nil' => nil
           |]
           |""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses command-style call with deep constant-path argument") {
       val input = "extend Test::Unit::Assertions"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2663,7 +2663,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  eval("'test'").frozen?
           |RUBY
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2692,7 +2692,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |hello
           |End
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2713,7 +2713,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |    val
           |  end
           |end;""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses interpolated mixed heredoc markers before do-block call") {
@@ -2723,7 +2723,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |    1.times {|&b?| }
           |  end;
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses lowercase plain heredoc terminator adjacent to block end") {
@@ -2736,7 +2736,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |    assert_equal :b, (b #{m} "b").to_sym
           |  end
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses single-quoted heredoc marker in arguments") {
@@ -2745,7 +2745,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  puts :ok
           |End
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -2755,7 +2755,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  dir = ARGV.shift
           |eom
           |""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses quoted heredoc marker with non-identifier delimiter") {
@@ -2764,7 +2764,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  puts :ok
           |},
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -2776,7 +2776,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  end
           |
           |""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("does not mis-detect heredoc opener text inside string literals") {
@@ -2786,13 +2786,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  %w[\x81\x5c]
           |RUBY
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("does not mis-detect heredoc opener text inside adjacent string literals") {
       val input = """assert_valid_syntax("{label:<<DOC\n""DOC\n""}", bug11849)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("keeps interpolation markers literal in normalized heredoc content") {
@@ -2802,13 +2802,13 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  #{C
           |RUBY
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses unary plus and minus operators") {
       val input = "line = -2; value = +line"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2821,7 +2821,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses exponent and bitwise operators") {
       val input = "value = ~1 & (2**8 | 0b1111_0000)"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2847,7 +2847,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses base-prefixed and underscored integers") {
       val input = "a = 0xFF; b = 1_000; c = 0d42; d = 0o12"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2862,7 +2862,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses numeric literals with r/i suffixes") {
       val input = "a = 1r; b = 2i; c = 3.5r"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2876,7 +2876,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses shift operators and postfix modifier on expression statements") {
       val input = "path << \"b\" if n; bits = value >> 2"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2903,7 +2903,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses unary not keyword in logical expressions") {
       val input = "if tests and not ARGV.empty?; :ok; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2929,7 +2929,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses while with assignment expression condition") {
       val input = "while (node = queue.shift); return node if node; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2956,24 +2956,24 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses while with unparenthesized assignment expression condition") {
       val input = "while node = queue.shift; return node if node; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses while with low-precedence or in the condition") {
       val input = "while prod_threads.any?(&:alive?) or !q.empty?\n  items << q.pop(true) rescue nil\nend"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses while with parenthesized multi assignment condition") {
       val input = "while (left, right = queue.shift); return left; end"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses compound assignment in expression context") {
       val input = "x = (@count += 1)"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -2993,7 +2993,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses symbol literals for forwarding markers") {
       val input = "scopes = [:*, :**, :&]"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -3020,7 +3020,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |#!./ruby
           |ok 1
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -3037,7 +3037,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  ["b", 2]
           |]
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -3060,7 +3060,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  ["a", 1],
           |]
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -3083,7 +3083,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  "y"
           |)
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -3102,7 +3102,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  tmpdir ||= Dir.tmpdir
           |end
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -3130,7 +3130,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses constant assignment with call-chain and do block") {
       val input = "BT = Class.new(bt) do; end.new"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -3163,7 +3163,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  end
           |end
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
@@ -3173,25 +3173,25 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  ""
           |end
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses comparison on constant receiver call") {
       val input = "BT.columns > 0"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses logical and with constant receiver comparison") {
       val input = "e and BT.columns > 0"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
     }
 
     it("parses triple-equals with constant paths") {
       val input = "x = Prism::StringNode === y"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -3221,7 +3221,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  prefix = "x"
           |end
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       val ast = parsed.toOption.get
       assert(
@@ -3248,17 +3248,17 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
     }
     it("parses while...do...end") {
       val input = "while x > 0 do\n  x -= 1\nend"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses until...do...end") {
       val input = "until x == 0 do\n  x -= 1\nend"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses parenthesized semicolon expressions before postfix until") {
       val input = "(Thread.pass; sleep 0.01) until q.size == 0"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses parenthesized multiline expressions before postfix while") {
@@ -3267,32 +3267,32 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  total += 1
           |  total += 2
           |) while false""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses for...in...do...end") {
       val input = "for i in 1..10 do\n  puts i\nend"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses if...then...end") {
       val input = "if x > 0 then\n  puts x\nend"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses unless...then...end") {
       val input = "unless x == 0 then\n  puts x\nend"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses when...then... in case") {
       val input = "case x\nwhen 1 then puts \"one\"\nwhen 2 then puts \"two\"\nend"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("strips __END__ section") {
       val input = "x = 1\n__END__\nsome data\nthat should be ignored"
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       assert(parsed.isRight)
       assert(parsed.toOption.get.statements.length == 1)
@@ -3309,19 +3309,19 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |
           |x = 1
           |""".stripMargin
-      val parsed = RubyFullParser.parse(input)
+      val parsed = RubyParser.parse(input)
       assert(parsed.isRight)
       assert(parsed.toOption.get.statements.length == 2)
     }
 
     it("parses begin...end as expression on RHS of assignment") {
       val input = "x = begin\n  1 + 2\nrescue\n  0\nend"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses assignment with newline before begin...end expression") {
       val input = "x =\n  begin\n    1\n  ensure\n    2\n  end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses if-end expressions chained with method calls") {
@@ -3333,66 +3333,66 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |end.each do |pair|
           |  pair
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses if...end as expression on RHS of assignment") {
       val input = "x = if cond\n  1\nelse\n  2\nend"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case...end as expression on RHS of assignment") {
       val input = "x = case y\nwhen 1 then \"one\"\nelse \"other\"\nend"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses quote-delimited percent word and symbol arrays") {
       val input = "a = %w\"x y\"; b = %w'a b'; c = %i\"foo bar\""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses chained assignment on rhs") {
       val input = "a = b = c = 1"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses chained index assignment on rhs") {
       val input = "expected[3] = actual[3] = nil"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multiline multi-assignment rhs split after comma") {
       val input =
         """a, b = o.method(:foo).source_location[0],
           |       o.method(:bar).source_location[0]""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multiline multi-assignment targets split after comma") {
       val input =
         """tz, u_mon, u_day,
           |  l_mon, l_day = captures""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses grouped multi-assignment targets with trailing comma") {
       val input = "(message, category), = captures"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multi-assignment targets with chained receiver and index targets") {
       val input = "x1.y1.z, x2[1, 2, 3], self[4] = r1, 6, r2"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses starred and indexed multi assignment") {
       val input = "*a = nil; ENV[n0], e0 = e0, ENV[n0]"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses safe-navigation assignment") {
       val input = "o&.x = 6"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses def with backtick method name") {
@@ -3400,7 +3400,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
         """def `(command)`
           |  command
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses backtick operator method before later backtick string literals") {
@@ -3411,77 +3411,77 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  end
           |  def test_xstr; assert_context(Context::String.new("`", "`")); end
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses question-mark character literal") {
       val input = "x = ?a"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses question-mark character literal range in call args") {
       val input = "l.zip(?a..?c)"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses unicode escaped question-mark character literal") {
       val input = """assert_equal(?\u0041, ?A)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses hex escaped question-mark character literal") {
       val input = """assert_equal(?\x79, ?y)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses octal escaped question-mark character literal") {
       val input = """assert_equal(?\000, ?\u{0})"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses control and meta question-mark character literals") {
       val input = """assert_equal("\1", ?\C-a); assert_equal("\341", ?\M-a); assert_equal("\201", ?\M-\C-a)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses double-quoted strings containing backticks in call args") {
       val input = """assert_context(Context::String.new("`", "`"))"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses anonymous keyword forwarding in array literals") {
       val input = "def self.a(b: 1, **) [b, **] end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses array literals with bare keyword-hash elements") {
       val input = "steps = [10, by: -1, to: nil]"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses command calls with array arg containing bare keyword-hash elements") {
       val input = "assert_step [10, by: -1], inf: true"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses nil block and keyword rest parameters") {
       val input = "def mnb(&nil) end; def mnk(**nil) end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses block pass with expression") {
       val input = "(1..3).each(&lambda{})"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses single-quoted symbol literal") {
       val input = "o.instance_variable_get(:'@')"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses hash literal with double-splat entry") {
       val input = "defined?({**a})"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in clauses") {
@@ -3492,7 +3492,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |else
           |  false
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in with rightward assignment pattern") {
@@ -3503,7 +3503,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |else
           |  nil
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in guard clauses") {
@@ -3514,7 +3514,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |else
           |  false
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in guard clauses on array patterns") {
@@ -3524,7 +3524,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in [0]
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in or-pattern clauses on array patterns") {
@@ -3534,7 +3534,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in [1] | [0]
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in lambda patterns") {
@@ -3543,7 +3543,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in ->(i) { i == 0 }
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in pin operator patterns") {
@@ -3552,7 +3552,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in a, ^a
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in hash patterns with pin-expression values") {
@@ -3561,7 +3561,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in {released_at: ^(Time.new(2010)..Time.new(2020))}
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in hash patterns with punctuated label keys") {
@@ -3570,7 +3570,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in a?: true
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in hash patterns with newline after label colon") {
@@ -3583,7 +3583,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |}
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in patterns with trailing comma before semicolon") {
@@ -3592,7 +3592,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in 0,;
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in bare splat patterns") {
@@ -3601,7 +3601,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in *, 1, *
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in bracketed splat array patterns") {
@@ -3610,7 +3610,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in [*, 1, *]
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in bracketed rightward assignment array patterns") {
@@ -3619,7 +3619,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in [*, 1 => a, *]
           |  a
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in constant deconstruct patterns") {
@@ -3628,7 +3628,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in Array(*, 1, *)
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in bracket deconstruct patterns") {
@@ -3637,7 +3637,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in C[0]
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses case-in bracket deconstruct patterns with shorthand hash labels") {
@@ -3646,7 +3646,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in Array[a:]
           |  a
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses top-level hash patterns without braces") {
@@ -3655,7 +3655,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in "a":, **rest
           |  rest
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses top-level bare double-splat hash patterns") {
@@ -3664,142 +3664,142 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |in **nil
           |  true
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses standalone rightward pattern matching with array patterns") {
       val input = "[0, 1, 2] => [*, 1 => a, *]"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses standalone rightward pattern matching with top-level hash patterns") {
       val input = "{a: 1} => a:"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses standalone rightward pattern matching with multiple bindings") {
       val input = "[1, 2] => a, b"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses standalone rightward pattern matching with bracket deconstruct shorthand hash patterns") {
       val input = "{} => Array[a:]"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses one-line in-pattern expressions") {
       val input = "assert_equal true, (1 in 1); assert_equal false, (1 in 2)"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses unary operator method definition") {
       val input = "class C; def -@; :ok; end; end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses block pass with call-chain expression") {
       val input = "Thread.new(&method(:sleep).to_proc)"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses for statement with multiple bindings") {
       val input = "for x,y in cache.sort_by {|z| z[0] % 3 }; puts x; end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses singleton class expression chained with class_eval") {
       val input = "class << o; self; end.class_eval do; x = 1; end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses backtick symbol literal") {
       val input = "marshal_equal(:`)"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses percent symbol literals") {
       val input = "values = [%s(a), %s(), %s|b|]"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses percent regex literals with percent delimiter") {
       val input = """assert_raise(ArgumentError, %r%unknown pack directive '\*' in '\*U'$%)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses equality operator without spaces") {
       val input = "expected==temp"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses inequality operator without spaces") {
       val input = "line!=\"# x.txt\""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses singleton defs whose method name is a keyword") {
       val input = "obj = Object.new; def obj.def; end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses receiver call with empty args inside brace block") {
       val input = "assert_raise(ArgumentError) { o.foo() }"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses explicit receiver operator calls for bracket access") {
       val input = """h = @cls.[]("a" => 100, "b" => 200)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses bracket calls with array literal hash-rocket keys") {
       val input = """assert_equal([[1], [2]], @cls[[1] => [2]].flatten)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses bracket calls with unary numeric hash-rocket keys") {
       val input = """x = @cls[1 => :a, -1 => :b]"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses call arguments with receiver-call hash-rocket keys") {
       val input = """system(env, RUBY, '-e', 'exit', 'rlimit_bogus'.to_sym => 123)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses io-popen array calls with trailing hash-rocket options") {
       val input = """io = IO.popen([RUBY, "-e", "print Process.getpgrp", :pgroup=>true])"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses array literals with trailing symbol hash-rocket options") {
       val input = """args = [RUBY, "-e", "print Process.getpgrp", :pgroup=>true]"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses array literals with single hash-rocket element") {
       val input = """args = [:a=>true]"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses array literals with trailing hash-rocket element") {
       val input = """args = [1, :a=>true]"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses function calls with single hash-rocket array arg element") {
       val input = """f([:a=>true])"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses function calls with trailing hash-rocket array arg element") {
       val input = """f([1, :a=>true])"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses io-popen array calls without trailing options") {
       val input = """io = IO.popen([RUBY, "-e", "print Process.getpgrp"])"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses io-popen array calls with string mode arg and block") {
@@ -3807,17 +3807,17 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
         """IO.popen([RUBY, '-egets'], 'w') do |f|
           |  Process.wait spawn(*TRUECOMMAND, :pgroup=>f.pid)
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses io-popen array calls with receiver-call option values") {
       val input = """io2 = IO.popen([RUBY, "-e", "print Process.getpgrp", :pgroup=>io1.pid])"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses receiver call arguments with local assignments") {
       val input = """ec.primitive_convert(src="a", dst="b", nil, 1, :partial_input=>true)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multiline single-quoted string argument before do-block") {
@@ -3826,62 +3826,62 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |$stderr = $stdout; raise "\x82\xa0"') do |outs, errs, status|
           |  outs
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses array literals with regex elements") {
       val input = """args = [/    \^/, /\n/]"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses function calls with regex array arguments") {
       val input = """assert_pattern_list([/    \^/, /\n/], e.message)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses regex literals with interpolation segments") {
       val input = """msg = /Invalid #{code[/\A\w+/]}/"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses special global variables with quoted names") {
       val input = """loaded = $".dup; $".clear; loadpath = $:.dup; $:.clear"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses low-precedence and with assignment on the rhs") {
       val input = """e = ENV[k] and h[k] = e"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses block bodies with low-precedence and assignment chains") {
       val input = """MANDATORY_ENVS.each {|k| e = ENV[k] and h[k] = e }"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses defined? with leading semicolon inside parentheses") {
       val input = """assert_equal("expression", defined? (;x))"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses defined? with trailing semicolon inside parentheses") {
       val input = """assert_equal("expression", defined? (x;))"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses no-arg receiver calls with brace blocks") {
       val input = """@h.each_value { |v| res << v }"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses receiver calls with brace blocks and multi-params") {
       val input = """@h.each { |k, v| expected << v }"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses index-receiver calls chained to brace blocks") {
       val input = """@cls[].each_value { |v| res << v }"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses index-receiver calls chained to do blocks") {
@@ -3890,7 +3890,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |h.each_pair do |k, v|
           |  assert_equal(v, h.delete(k))
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses hash each-value methods with consecutive brace blocks") {
@@ -3909,67 +3909,67 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  assert_equal([], expected - res)
           |  assert_equal([], res - expected)
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses nested index assignment targets") {
       val input = """a_kw[-1][:y] = 2"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses chained calls on empty array literals") {
       val input = """assert_equal(0, [].length)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses command-style spawn calls with splat bracket-call args") {
       val input = """Process.wait Process.spawn(*PWD, :out => n)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses command-style spawn calls with splat bracket-call args and array redirect targets") {
       val input = """Process.wait Process.spawn(*ECHO["a"], STDOUT=>["out", File::WRONLY|File::CREAT|File::TRUNC, 0644])"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses call arguments with array-literal hash-rocket keys") {
       val input = """Process.wait Process.spawn(*ECHO["f"], [Process]=>1)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses call arguments with multi-element array hash-rocket keys") {
       val input = """Process.wait Process.spawn(*ECHO["f"], [1, STDOUT]=>2)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses anonymous splat call arguments") {
       val input = """def self.s(*) ->(*a){a}.call(*) end"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses method calls with negative positional args") {
       val input = "assert_equal(5**2 % -8, 5.pow(2,-8))"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses unary minus receiver method calls") {
       val input = "assert_equal((-3)**3 % 8, -3.pow(3,8))"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses call-with-brace-block used as a positional argument") {
       val input = """assert_equal(123, delay { 123 }.call, message(bug6901) { disasm(:delay) })"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses receiver call-with-brace-block used as a positional argument") {
       val input = """assert_nil("".unpack("i") {|x| result = x}, bug4059)"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses receiver chains with closed range slices inside call args") {
       val input = "assert_pattern_list([], e.message.lines[2..-1].join)"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses multiline bigint receiver dot-call") {
@@ -3978,7 +3978,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |             2120078484650058507891187874713297895455.
           |                pow(5478118174010360425845660566650432540723,
           |                    5263488859030795548286226023720904036518))""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses receiver call with block and bare hash entry inside array arg") {
@@ -3986,17 +3986,17 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
         """IO.popen([env, RUBY, "-e", "puts Process.getrlimit(:CORE)", :rlimit_core=>n]) {|io|
           |  assert_equal("#{n}\n#{n}\n", io.read)
           |}""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses exact optimization call-with-block argument shape") {
       val input = """assert_equal(123, delay { 123 }.call, message(bug6901) {disasm(:delay)})"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses exact parse-test receiver call with block inside assert_equal") {
       val input = """assert_equal(-303, o.foo(1,2,3) {|x| -x } )"""
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses optimization method with mixed heredoc setup and block call args") {
@@ -4018,7 +4018,7 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |  end;
           |  assert_equal(123, delay { 123 }.call, message(bug6901) {disasm(:delay)})
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses parse-test method with heredoc interpolation and duplicate-arg block") {
@@ -4030,32 +4030,32 @@ class RubyFullParserSpec extends AnyFunSpec with Diagrams {
           |    end;
           |  end
           |end""".stripMargin
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses not-match operator without spaces") {
       val input = "str!~/x/"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses command call with postfix unless and no-space equality") {
       val input = "assert_equal expected, temp.upcase!(*flags) unless expected==temp"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses chained postfix rescue and if modifiers") {
       val input = "File.unlink(*tmpfiles) rescue nil if tmpfiles"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses no-space lambda command argument") {
       val input = "cmp->(x) do 0; end"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
     it("parses literal receiver command call with block and safe navigation chain") {
       val input = "assert_nil((\"a\".sub! \"b\" do end&.foo 1))"
-      assert(RubyFullParser.parse(input).isRight)
+      assert(RubyParser.parse(input).isRight)
     }
 
   }
