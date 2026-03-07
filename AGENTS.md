@@ -340,3 +340,11 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 - さらに runner は simple timeout worker に戻しつつ、warmup snippet を `multi-assign` / `%W[...] + heredoc` / regex interpolation を含む形へ強化。`test_assignment.rb` と `test_syntax.rb` の cold start 差を少しでも削る狙いにした。
 - その結果、full corpus 5s の最新確定値は **`80.07% (241/301)`** まで到達。条件は `SBT_OPTS='-Xmx16g -XX:+UseG1GC'`、runner warmup default (`5`)、timeout後GCあり。
 - これで今セッションの停止条件 `80%` は突破。残りは全部 timeout で、top は `test_pattern_matching.rb`, `test_rubyoptions.rb`, `test_string.rb`, `test_call.rb`, `test_set.rb` あたり。
+- 続きのセッションで前セッションの未コミット変更を引き継いでテスト実行したところ、`lazy val` 循環初期化デッドロックが発覚。`callArgListExpr → callSuffixNoBlock → dotCallSuffix → callArgs → callArgListExpr` と `callArgListExpr → methodSuffix → callArgs → callArgListExpr` の2つの循環パスがあった。`callArgListExpr` / `bracketArgListExpr` 内の suffix chain を除去して `argRegexLiteral / callArgExpr` に単純化し、デッドロックを解消。
+- さらに `callArgListExpr` の分岐順を `callArgExpr / argRegexLiteral`（expr優先）に変更。以前は `argRegexLiteral` が先に `/regex/` だけを消費して、`/regex/ =~ str` のようなinfix式がcallArgs内で失敗していた。順序入れ替えで `test_stringchar.rb` / `test_m17n.rb` / `test_regexp.rb` / `test_unicode_escape.rb` の4件が parse_error から success に反転。
+- 検証は `sbt -batch test` 全 `390` テスト成功。
+- full corpus 5s の確定値は **`99.00% (298/301)`**。残り3件は全て timeout:
+  - `bootstraptest/test_yjit_30k_ifelse.rb` (241023行) — 自動生成の巨大ファイル
+  - `bootstraptest/test_yjit_30k_methods.rb` (121018行) — 自動生成の巨大ファイル
+  - `test/ruby/test_keyword.rb` (4597行) — 単体では約4.7秒で成功、corpus runner ではギリギリ5秒超え
+- `test_keyword.rb` は単体実行で 4754ms と5秒を250ms下回っており、軽微な最適化で corpus 内でも成功する見込みがある。

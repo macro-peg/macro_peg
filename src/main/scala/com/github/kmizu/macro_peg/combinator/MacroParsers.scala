@@ -6,7 +6,46 @@ import scala.collection.mutable.HashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 object MacroParsers {
-  type Input = String
+  final class Input private (val source: String, val offset: Int) {
+    def length: Int = source.length - offset
+    def isEmpty: Boolean = offset >= source.length
+    def startsWith(literal: String): Boolean = source.startsWith(literal, offset)
+    def charAt(index: Int): Char = source.charAt(offset + index)
+    def samePositionAs(other: Input): Boolean =
+      (source eq other.source) && offset == other.offset
+    def drop(count: Int): Input =
+      if(count == 0) this
+      else new Input(source, offset + count)
+    def take(count: Int): String =
+      source.substring(offset, offset + count)
+    def slice(start: Int, end: Int): String =
+      source.substring(offset + start, offset + end)
+    def remaining: String =
+      source.substring(offset)
+    override def toString: String = remaining
+    override def equals(other: Any): Boolean =
+      other match {
+        case input: Input =>
+          samePositionAs(input) || (
+            length == input.length &&
+              source.regionMatches(offset, input.source, input.offset, length)
+          )
+        case string: String =>
+          length == string.length &&
+            source.regionMatches(offset, string, 0, length)
+        case _ => false
+      }
+    override def hashCode(): Int =
+      remaining.hashCode
+  }
+
+  object Input {
+    def apply(source: String): Input = new Input(source, 0)
+    def apply(source: String, offset: Int): Input = new Input(source, offset)
+    given Conversion[String, Input] with {
+      override def apply(source: String): Input = Input(source)
+    }
+  }
   case class ~[+A, +B](_1: A, _2: B)
 
   private final case class RecursionFrame(rule: String, remaining: Int)
@@ -59,6 +98,7 @@ object MacroParsers {
 
   abstract sealed class MacroParser[+T] { self =>
     def apply(input: Input): ParseResult[T]
+    def apply(input: String): ParseResult[T] = apply(Input(input))
     def |[U >: T](b: MacroParser[U]): MacroParser[U] = Alternation(this, b)
     def /[U >: T](b: MacroParser[U]): MacroParser[U] = this | b
     def ~[U](b: MacroParser[U]): MacroParser[T ~ U] = Sequence(this, b)
@@ -260,15 +300,19 @@ object MacroParsers {
     }
   }
 
+  def parseAll[T](parser: MacroParser[T], input: String): Either[ParseFailure, T] =
+    parseAll(parser, Input(input))
+
   def formatFailure(input: Input, failure: ParseFailure): String = {
     val offset = consumed(input, failure)
-    val prefix = input.substring(0, math.max(0, math.min(input.length, offset)))
+    val absoluteOffset = input.offset + math.max(0, math.min(input.length, offset))
+    val prefix = input.source.substring(0, absoluteOffset)
     val line = prefix.count(_ == '\n') + 1
     val col = prefix.reverseIterator.takeWhile(_ != '\n').length + 1
-    val start = math.max(0, offset - 20)
-    val end = math.min(input.length, offset + 20)
-    val fragment = input.substring(start, end)
-    val pointer = " " * (offset - start) + "^"
+    val start = math.max(0, absoluteOffset - 20)
+    val end = math.min(input.source.length, absoluteOffset + 20)
+    val fragment = input.source.substring(start, end)
+    val pointer = " " * (absoluteOffset - start) + "^"
     val expected = if(failure.expected.isEmpty) "" else s"\nexpected: ${failure.expected.mkString(", ")}"
     val stack = if(failure.ruleStack.isEmpty) "" else s"\nstack: ${failure.ruleStack.reverse.mkString(" -> ")}"
     val msg = if(failure.message.isEmpty) "parse failed" else failure.message
@@ -279,7 +323,7 @@ object MacroParsers {
     override def apply(input: Input): ParseResult[U] = {
       parser(input) match {
         case ParseSuccess(value, next) =>
-          cc(new StringWithValueParser(input.substring(0, input.length - next.length), value))(next)
+          cc(new StringWithValueParser(input.source.substring(input.offset, next.offset), value))(next)
         case failure: ParseFailure =>
           failure
       }
@@ -288,14 +332,14 @@ object MacroParsers {
 
   final case class StringParser(literal: String) extends MacroParser[String] {
     override def apply(input: Input): ParseResult[String] = {
-      if(input.startsWith(literal)) ParseSuccess(literal, input.substring(literal.length))
+      if(input.startsWith(literal)) ParseSuccess(literal, input.drop(literal.length))
       else ParseFailure(s"expected $literal", input, expected = literal :: Nil)
     }
   }
 
   final case class StringWithValueParser[T](literal: String, value: T) extends MacroParser[T] {
     override def apply(input: Input): ParseResult[T] = {
-      if(input.startsWith(literal)) ParseSuccess(value, input.substring(literal.length))
+      if(input.startsWith(literal)) ParseSuccess(value, input.drop(literal.length))
       else ParseFailure(s"expected $literal", input, expected = literal :: Nil)
     }
   }
@@ -309,10 +353,10 @@ object MacroParsers {
           expected = List(ranges.map(_.mkString).mkString(" | "))
         )
       } else if(ranges.exists(_.contains(input.charAt(0)))) {
-        ParseSuccess(input.substring(0, 1), input.substring(1))
+        ParseSuccess(input.take(1), input.drop(1))
       } else {
         ParseFailure(
-          s"found ${input.substring(0, 1)}, but expected one of: $ranges",
+          s"found ${input.take(1)}, but expected one of: $ranges",
           input,
           expected = List(ranges.map(_.mkString).mkString(" | "))
         )
@@ -346,7 +390,7 @@ object MacroParsers {
       while(true) {
         parser(rest) match {
           case ParseSuccess(result, next) =>
-            if(next == rest) {
+            if(next.samePositionAs(rest)) {
               return ParseFailure(
                 "repetition parser consumed no input",
                 rest,
@@ -374,7 +418,7 @@ object MacroParsers {
       val total = ListBuffer[T]()
       parser(rest) match {
         case ParseSuccess(result, next) =>
-          if(next == rest) {
+          if(next.samePositionAs(rest)) {
             return ParseFailure(
               "repetition parser consumed no input",
               rest,
@@ -387,7 +431,7 @@ object MacroParsers {
           while(true) {
             parser(rest) match {
               case ParseSuccess(result2, next2) =>
-                if(next2 == rest) {
+                if(next2.samePositionAs(rest)) {
                   return ParseFailure(
                     "repetition parser consumed no input",
                     rest,
@@ -481,7 +525,7 @@ object MacroParsers {
 
   case object AnyParser extends MacroParser[String] {
     override def apply(input: Input): ParseResult[String] = {
-      if(input.length >= 1) ParseSuccess(input.substring(0, 1), input.substring(1))
+      if(input.length >= 1) ParseSuccess(input.take(1), input.drop(1))
       else ParseFailure("EOF", input, expected = List("any character"))
     }
   }

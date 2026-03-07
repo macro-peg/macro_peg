@@ -488,6 +488,24 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(RubySubsetParser.parse(input).isRight)
     }
 
+    it("parses do-block parameters on the next line") {
+      val input =
+        """items.each do
+          |  |b, e = 'end', pre = nil, post = nil|
+          |  [b, e, pre, post]
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses brace-block parameters on the next line") {
+      val input =
+        """items.map {
+          |  |s|
+          |  s.to_s
+          |}""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses do-end block attached to call") {
       val input = "items.each do |x| puts x; end"
       val parsed = RubySubsetParser.parse(input)
@@ -773,6 +791,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(parsed.isRight)
     }
 
+    it("parses parenthesized return with stacked postfix modifiers") {
+      val input = "def obj.test; x = nil; _y = (return until x unless x); end"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses command arg starting with case expression") {
       val input =
         """puts case x
@@ -827,6 +850,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
           )
         ), UnknownSpan)
       )
+    }
+
+    it("parses receiver calls to self keyword method names") {
+      val input = "assert_raise(RuntimeError){tp_store.self}"
+      assert(RubySubsetParser.parse(input).isRight)
     }
 
     it("parses receiver calls to begin/end keyword method names") {
@@ -1607,6 +1635,16 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(parsed.isRight)
     }
 
+    it("parses bare ruby2_keywords call in class body") {
+      val input = "class C; ruby2_keywords; end"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses private call with def expression argument") {
+      val input = "private(def foo = :ok)"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses lambda literal argument with bare parameter") {
       val input = "add_assertion testsrc, -> as do; as.id = 1; end"
       val parsed = RubySubsetParser.parse(input)
@@ -1662,6 +1700,14 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
           |  timeout: 1000
           |)
           |  script
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses multiline bare def parameters") {
+      val input =
+        """def source_location_test a=1,
+          |  b=2
           |end""".stripMargin
       assert(RubySubsetParser.parse(input).isRight)
     }
@@ -2346,6 +2392,30 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
           )
         ), UnknownSpan)
       )
+    }
+
+    it("parses percent-r regex literals with colon delimiter") {
+      val input = """assert_equal(':', %r:\::.source, bug5484)"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses multiline regex literals with flags") {
+      val input =
+        """if /\A(\S+)\s+
+          |   \S+\z/x !~ line
+          |  raise line
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses call arguments with regex literals that start with spaces") {
+      val input = """mount.scan(/ on (\S+) type (\S+) /) { mountpoints << [$1, $2] }"""
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses bracket arguments with x-flag regex literals that start with spaces") {
+      val input = """"foobarbaz"[/  b  .  .  /x]"""
+      assert(RubySubsetParser.parse(input).isRight)
     }
 
     it("parses multiline or with command-call rhs") {
@@ -3254,6 +3324,18 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       assert(RubySubsetParser.parse(input).isRight)
     }
 
+    it("parses if-end expressions chained with method calls") {
+      val input =
+        """if ready
+          |  [[1, 2]]
+          |else
+          |  [[3, 4]]
+          |end.each do |pair|
+          |  pair
+          |end""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
     it("parses if...end as expression on RHS of assignment") {
       val input = "x = if cond\n  1\nelse\n  2\nend"
       assert(RubySubsetParser.parse(input).isRight)
@@ -3283,6 +3365,18 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
       val input =
         """a, b = o.method(:foo).source_location[0],
           |       o.method(:bar).source_location[0]""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses multiline multi-assignment targets split after comma") {
+      val input =
+        """tz, u_mon, u_day,
+          |  l_mon, l_day = captures""".stripMargin
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses grouped multi-assignment targets with trailing comma") {
+      val input = "(message, category), = captures"
       assert(RubySubsetParser.parse(input).isRight)
     }
 
@@ -3580,6 +3674,11 @@ class RubySubsetParserSpec extends AnyFunSpec with Diagrams {
 
     it("parses standalone rightward pattern matching with top-level hash patterns") {
       val input = "{a: 1} => a:"
+      assert(RubySubsetParser.parse(input).isRight)
+    }
+
+    it("parses standalone rightward pattern matching with multiple bindings") {
+      val input = "[1, 2] => a, b"
       assert(RubySubsetParser.parse(input).isRight)
     }
 

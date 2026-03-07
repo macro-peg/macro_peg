@@ -299,7 +299,8 @@ object RubySubsetParser {
   private lazy val bareKeywordMethodNameNoSpace: P[String] =
     keywordMethodName("private") /
       keywordMethodName("public") /
-      keywordMethodName("protected")
+      keywordMethodName("protected") /
+      keywordMethodName("ruby2_keywords")
 
   private lazy val receiverKeywordMethodNameNoSpace: P[String] =
     keywordMethodName("class") /
@@ -307,7 +308,8 @@ object RubySubsetParser {
       bareKeywordMethodNameNoSpace /
       keywordMethodName("begin") /
       keywordMethodName("end") /
-      keywordMethodName("for")
+      keywordMethodName("for") /
+      keywordMethodName("self")
 
   private lazy val receiverMethodNameNoSpace: P[String] =
     methodIdentifierNoSpace / receiverKeywordMethodNameNoSpace
@@ -720,6 +722,7 @@ object RubySubsetParser {
       percentRegexLiteral("(", ")") /
       percentRegexLiteral("[", "]") /
       percentRegexLiteral("<", ">") /
+      percentRegexLiteralSimple(":") /
       percentRegexLiteralSimple("%") /
       percentRegexLiteralSimple("|") /
       percentRegexLiteralSimple("\"") /
@@ -751,8 +754,8 @@ object RubySubsetParser {
     ("\\".s ~ any).map { case _ ~ c => s"\\$c" }
 
   private lazy val plainRegexChar: P[String] =
-    (!"/".s ~ !"\n".s ~ !"\r".s ~ !"#{".s ~ any).map {
-      case _ ~ _ ~ _ ~ _ ~ c => c
+    (!"/".s ~ !"#{".s ~ any).map {
+      case _ ~ _ ~ c => c
     }
 
   private lazy val regexSpaceOnlyBody: P[String] =
@@ -770,6 +773,11 @@ object RubySubsetParser {
 
   private lazy val regexBodyChars: P[List[String]] =
     (escapedRegexChar / interpolationSegment / plainRegexChar).*
+
+  private lazy val argRegexLiteral: P[Expr] =
+    token(("/".s ~ regexBodyChars ~ "/".s ~ range('a' to 'z', 'A' to 'Z').*).map {
+      case _ ~ chars ~ _ ~ _ => StringLiteral(chars.mkString)
+    })
 
   private lazy val regexLiteral: P[Expr] =
     percentRegex /
@@ -984,11 +992,14 @@ object RubySubsetParser {
       case entries ~ _ => HashLiteral(entries)
     }.memo
 
+  private lazy val callArgListExpr: P[Expr] =
+    callArgExpr / argRegexLiteral
+
   private lazy val callArgs: P[List[Expr]] =
     (sym("(") ~>
       (
         spacing ~>
-          sepBy0(spacing ~> callArgExpr <~ spacing, sym(",")) ~
+          sepBy0(spacing ~> callArgListExpr <~ spacing, sym(",")) ~
           ((sym(",") <~ spacing).?) <~
           spacing <~
           sym(")")
@@ -1240,6 +1251,8 @@ object RubySubsetParser {
       lambdaLiteral /
         singletonClassExpr /
         refer(beginStmt).map(_.asInstanceOf[Expr]) /
+        defExpr /
+        refer(returnStmt).map(_.asInstanceOf[Expr]) /
         refer(ifStmt).map(_.asInstanceOf[Expr]) /
         refer(unlessStmt).map(_.asInstanceOf[Expr]) /
         refer(caseStmt).map(_.asInstanceOf[Expr]) /
@@ -1374,6 +1387,7 @@ object RubySubsetParser {
   private lazy val doBlock: P[Block] =
     (
       kw("do") ~
+      statementSep.* ~
       blockParams.? ~
       statementSep.* ~
       blockStatementsUntil(kw("rescue") / kw("else") / kw("ensure") / kw("end")) ~
@@ -1386,7 +1400,7 @@ object RubySubsetParser {
       statementSep.* ~
       kw("end")
     ).map {
-      case _ ~ maybeParams ~ _ ~ body ~ _ ~ rescues ~ _ ~ elseOpt ~ _ ~ ensureOpt ~ _ ~ _ =>
+      case _ ~ _ ~ maybeParams ~ _ ~ body ~ _ ~ rescues ~ _ ~ elseOpt ~ _ ~ ensureOpt ~ _ ~ _ =>
         val elseBody = elseOpt.map { case _ ~ _ ~ statements => statements }.getOrElse(Nil)
         val ensureBody = ensureOpt.map { case _ ~ _ ~ statements => statements }.getOrElse(Nil)
         val statements =
@@ -1399,12 +1413,21 @@ object RubySubsetParser {
     }
 
   private lazy val braceBlock: P[Block] =
-    (sym("{") ~ blockParams.? ~ statementSep.* ~ blockStatementsUntil(sym("}")) ~ statementSep.* ~ spacing ~ sym("}")).map {
-      case _ ~ maybeParams ~ _ ~ body ~ _ ~ _ ~ _ => Block(maybeParams.getOrElse(Nil), body)
+    (sym("{") ~ statementSep.* ~ blockParams.? ~ statementSep.* ~ blockStatementsUntil(sym("}")) ~ statementSep.* ~ spacing ~ sym("}")).map {
+      case _ ~ _ ~ maybeParams ~ _ ~ body ~ _ ~ _ ~ _ => Block(maybeParams.getOrElse(Nil), body)
     }
 
   private lazy val blockLiteral: P[Block] =
     doBlock / braceBlock
+
+  private lazy val chainableKeywordExprStmt: P[Statement] =
+    (((refer(beginStmt).map(_.asInstanceOf[Expr]) /
+      refer(ifStmt).map(_.asInstanceOf[Expr]) /
+      refer(unlessStmt).map(_.asInstanceOf[Expr]) /
+      refer(caseStmt).map(_.asInstanceOf[Expr])) ~ callSuffix.+).map {
+      case base ~ suffixes =>
+        exprAsStatement(suffixes.foldLeft(base) { (current, suffix) => suffix(current) })
+    })
 
   private lazy val lambdaLiteral: P[Expr] =
     (sym("->") ~ (params / bareParams).? ~ blockLiteral).map {
@@ -1477,11 +1500,14 @@ object RubySubsetParser {
         (receiver: Expr) => Call(Some(receiver), "call", args)
     })
 
+  private lazy val bracketArgListExpr: P[Expr] =
+    bracketArgExpr / argRegexLiteral
+
   private lazy val bracketCallArgs: P[List[Expr]] =
     (sym("[") ~>
       (
         spacing ~>
-          sepBy0(spacing ~> bracketArgExpr <~ spacing, sym(",")) ~
+          sepBy0(spacing ~> bracketArgListExpr <~ spacing, sym(",")) ~
           ((sym(",") <~ spacing).?) <~
           spacing <~
           sym("]")
@@ -1998,13 +2024,13 @@ object RubySubsetParser {
       multiAssignFlatElement
 
   private lazy val multiAssignNames: P[List[String]] =
-    (multiAssignElement ~ (sym(",") ~ multiAssignElement).+ ~ sym(",").?).map {
-      case first ~ rest ~ _ => first :: rest.map(_._2)
+    (multiAssignElement ~ (sym(",") ~ spacing ~> multiAssignElement).+ ~ (sym(",") <~ spacing).?).map {
+      case first ~ rest ~ _ => first :: rest
     } /
-      multiAssignGroupedElement.map(List(_)) /
-      (multiAssignElement ~ (sym(",") ~ multiAssignElement).* ~ sym(",")).map {
-        case first ~ rest ~ _ => first :: rest.map(_._2)
+      (multiAssignElement ~ (sym(",") ~ spacing ~> multiAssignElement).* ~ (sym(",") <~ spacing)).map {
+        case first ~ rest ~ _ => first :: rest
       } /
+      multiAssignGroupedElement.map(List(_)) /
       (sym("*") ~ multiAssignTargetExpr.?).map {
         case _ ~ Some(target) => List(s"*${multiAssignTargetName(target)}")
         case _ ~ None => List("*")
@@ -2075,7 +2101,7 @@ object RubySubsetParser {
       sym(")"))
 
   private lazy val bareParams: P[List[String]] =
-    sepBy1(formalParam, sym(","))
+    sepBy1(formalParam, (sym(",") ~ spacing).void)
 
   private lazy val defReceiverName: P[String] =
     (sym("(") ~> refer(expr) <~ sym(")")).map(_ => "(expr)") /
@@ -2145,6 +2171,7 @@ object RubySubsetParser {
 
   private lazy val statementBase: P[Statement] =
     (
+      chainableKeywordExprStmt /
       refer(beginStmt) /
       refer(whileStmt) /
       refer(untilStmt) /
@@ -2245,17 +2272,18 @@ object RubySubsetParser {
 
   private lazy val defStmt: P[Statement] =
     (
-      kw("def") ~
-      defName ~
-      (params / bareParams).? ~
-      (
-        (assignEq ~ spacing ~ refer(expr)).map { case _ ~ _ ~ bodyExpr => EndlessDefBody(bodyExpr) } /
-          regularDefBody
-      )
+      kw("def") ~ (
+        defName ~
+        (params / bareParams).? ~
+        (
+          (assignEq ~ spacing ~ refer(expr)).map { case _ ~ _ ~ bodyExpr => EndlessDefBody(bodyExpr) } /
+            regularDefBody
+        )
+      ).cut
     ).map {
-      case _ ~ name ~ maybeParams ~ EndlessDefBody(bodyExpr) =>
+      case _ ~ (name ~ maybeParams ~ EndlessDefBody(bodyExpr)) =>
         Def(name, maybeParams.getOrElse(Nil), List(ExprStmt(bodyExpr)))
-      case _ ~ name ~ maybeParams ~ RegularDefBody(body, rescues, elseBody, ensureBody) =>
+      case _ ~ (name ~ maybeParams ~ RegularDefBody(body, rescues, elseBody, ensureBody)) =>
         val statements =
           if(rescues.nonEmpty || elseBody.nonEmpty || ensureBody.nonEmpty) {
             List(BeginRescue(body, rescues, elseBody, ensureBody))
@@ -2455,10 +2483,10 @@ object RubySubsetParser {
 
   private lazy val rightwardAssignPattern: P[Expr] =
     (inTopLevelHashHead.and ~> inTopLevelHashPattern).map(collapsePatternList) /
-      refer(inPatternExpr) /
       ((sepBy1(inPatternListElement, sym(",")) ~ (sym(",").?)).map {
         case patterns ~ _ => collapsePatternList(patterns)
-      })
+      }) /
+      refer(inPatternExpr)
 
   private def collapsePatternList(patterns: List[Expr]): Expr =
     patterns match {

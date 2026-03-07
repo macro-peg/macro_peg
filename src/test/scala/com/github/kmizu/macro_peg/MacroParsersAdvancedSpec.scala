@@ -45,7 +45,7 @@ class MacroParsersAdvancedSpec extends AnyFunSpec with Diagrams {
       assert(parser("1,22,333") == ParseSuccess(List("1", "22", "333"), ""))
       assert(parser("") == ParseSuccess(Nil, ""))
       (success(42) ~ "x".s)("x") match {
-        case ParseSuccess(pair, "") =>
+        case ParseSuccess(pair, next) if next.isEmpty =>
           assert(pair._1 == 42)
           assert(pair._2 == "x")
         case other =>
