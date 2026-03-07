@@ -177,13 +177,13 @@ object RubySubsetParser {
     ("=begin".s ~ (!"=end".s ~ any).* ~ "=end".s).map(_ => ())
 
   private lazy val inlineSpacing: P[Unit] =
-    (horizontalSpaceChar / lineContinuation / comment / blockComment).*.void
+    (horizontalSpaceChar.+ / lineContinuation / comment / blockComment).*.void
 
   private lazy val horizontalSpacing: P[Unit] =
     (horizontalSpaceChar / lineContinuation).*.void
 
   private lazy val spacing: P[Unit] =
-    (horizontalSpaceChar / newlineChar / lineContinuation / comment / blockComment).*.void
+    (horizontalSpaceChar.+ / newlineChar / lineContinuation / comment / blockComment).*.void
 
   private lazy val spacing1: P[Unit] =
     (horizontalSpaceChar / comment / blockComment).+.void
@@ -1930,19 +1930,41 @@ object RubySubsetParser {
         AssignExpr(name, BinaryOp(assignableAsExpr(name), underlying, value))
     }
 
-  private lazy val assignmentCapableExpr: P[Expr] =
-    (chainedReceiverAssignExpr /
+  // Receiver-based assignments require "expr.name =" pattern
+  private lazy val receiverAssignGuard: P[Any] =
+    (receiverForCommand ~ receiverAssignableSeparator).and
+
+  private lazy val receiverAssignmentExprs: P[Expr] =
+    chainedReceiverAssignExpr /
       receiverAssignExpr /
       receiverLogicalAssignExpr /
-      receiverCompoundAssignExpr /
-      indexLogicalAssignExpr /
+      receiverCompoundAssignExpr
+
+  // Index-based assignments require "expr[" pattern
+  private lazy val indexAssignmentExprs: P[Expr] =
+    indexLogicalAssignExpr /
       indexCompoundAssignExpr /
-      indexAssignExpr /
-      logicalAssignExpr /
+      indexAssignExpr
+
+  // Simple name-based assignments: name =, name +=, etc.
+  // Guard: identifier/ivar/cvar/gvar followed by = or , ; or ( or * for grouped/splatted multi-assign
+  private lazy val nameAssignGuard: P[Any] =
+    (assignableName ~ (sym("=") / sym("||=") / sym("&&=") / sym(",") / compoundAssignOperator).and).and /
+      sym("(").and /  // grouped multi-assign: (a, b) = ...
+      sym("*").and    // splatted multi-assign: *a = ...
+
+  private lazy val nameAssignmentExprs: P[Expr] =
+    logicalAssignExpr /
       compoundAssignExpr /
       multiAssignExpr /
-      assignExpr /
-      conditionalExpr)
+      assignExpr
+
+  private lazy val assignmentCapableExpr: P[Expr] =
+    (receiverAssignGuard ~> receiverAssignmentExprs) /
+      indexAssignmentExprs /
+      multiAssignExpr /
+      (nameAssignGuard ~> nameAssignmentExprs) /
+      conditionalExpr
 
   private lazy val expr: P[Expr] =
     chainl(assignmentCapableExpr)(infixLogicalKeyword("and") / infixLogicalKeyword("or")).memo
@@ -2173,8 +2195,8 @@ object RubySubsetParser {
     }
 
   private lazy val simpleStatement: P[Statement] =
-    returnStmt /
-      retryStmt /
+    (kw("return").and ~> returnStmt) /
+      (kw("retry").and ~> retryStmt) /
       constAssignStmt /
       assignDefStmt /
       rightwardAssignStmt /
