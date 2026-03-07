@@ -30,6 +30,7 @@ libraryDependencies ++= Seq(
 
 Test / fork := true
 Test / javaOptions += "-Xss128m"
+Test / parallelExecution := false
 
 
 initialCommands in console += {

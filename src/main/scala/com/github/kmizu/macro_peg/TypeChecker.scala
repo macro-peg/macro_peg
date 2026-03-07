@@ -85,6 +85,9 @@ class TypeChecker(grammar: Grammar) {
       val env1 = env ++ args.map(_ -> simple)
       infer(body, env1).map(res => RuleType(DUMMY_POSITION, paramTypes, res))
     case Debug(pos, b) => infer(b, env)
+    case Labeled(_, _, b) => infer(b, env)
+    case Cut(_, b) => infer(b, env)
+    case SemanticAction(_, _) => Right(simple)
   }
 
   def check(): Either[TypeError, Unit] = {

@@ -1,0 +1,612 @@
+// Ruby Grammar (Macro PEG)
+// Full structural grammar for Ruby — generates RubyAst nodes via semantic actions.
+// Higher-order macros (Token, Kw, DigitsWithUnderscore) are inlined at
+// compile-time by MacroExpander, producing a first-order combinator parser.
+
+head {
+  import com.github.kmizu.macro_peg.ruby.RubyAst._
+}
+
+// ─── Higher-Order Token Macros ─────────────────────────────────────────────
+
+Token(p: ?) = p InlineSpacing ;
+Kw(name: ?) = Token(name !IdentCont) ;
+
+// ─── Whitespace & Comments ─────────────────────────────────────────────────
+
+HorizontalSpaceChar = [ \t\r] ;
+NewlineChar = "\n" ;
+LineContinuation = "\\\n" ;
+Comment = "#" (!"\n" .)* ;
+BlockComment = "=begin" (!"=end" .)* "=end" ;
+InlineSpacing = (HorizontalSpaceChar+ / LineContinuation / Comment / BlockComment)* ;
+Spacing = (HorizontalSpaceChar+ / NewlineChar / LineContinuation / Comment / BlockComment)* ;
+Spacing1 = (HorizontalSpaceChar / Comment / BlockComment)+ ;
+HorizontalSpacing = (HorizontalSpaceChar / LineContinuation)* ;
+
+// ─── Character Classes ─────────────────────────────────────────────────────
+
+AsciiChar = [\u0000-\u007f] ;
+IdentStart = [a-zA-Z_] ;
+IdentCont = [a-zA-Z0-9_] ;
+ConstStart = [A-Z] ;
+Digit = [0-9] ;
+HexDigit = [0-9a-fA-F] ;
+BinDigit = [01] ;
+OctDigit = [0-7] ;
+NonAsciiChar = !AsciiChar . ;
+
+// ─── Identifiers ───────────────────────────────────────────────────────────
+
+IdentifierRaw = (IdentStart / NonAsciiChar) (IdentCont / NonAsciiChar)* ;
+
+ReservedWord = ("begin" / "def" / "class" / "module" / "while" / "until"
+  / "for" / "in" / "case" / "when" / "if" / "elsif" / "else"
+  / "and" / "not" / "or" / "do" / "rescue" / "ensure" / "retry"
+  / "unless" / "end" / "return" / "self" / "true" / "false" / "nil"
+  / "alias" / "yield" / "super" / "then" / "break" / "next" / "raise"
+  / "defined?" / "redo") !IdentCont ;
+
+IdentifierNoSpace = !ReservedWord IdentifierRaw ;
+Identifier = Token(IdentifierNoSpace) ;
+IdentifierExpr = MethodIdentifier ${ LocalVar(flatText(__result).trim, UnknownSpan) } ;
+
+MethodSuffixChar = "?" / ("!" !"=" !"~") / ("=" !"=" !">" !"~") ;
+MethodIdentifierWithSuffixRaw = IdentifierRaw MethodSuffixChar ;
+MethodIdentifierRaw = MethodIdentifierWithSuffixRaw / !ReservedWord IdentifierRaw ;
+MethodIdentifier = Token(MethodIdentifierRaw) ;
+
+// Keyword names usable as method names after a receiver
+KeywordMethodNameNoSpace = ("private" / "public" / "protected" / "ruby2_keywords"
+  / "class" / "def" / "begin" / "end" / "for" / "self") !IdentCont ;
+ReceiverMethodNameNoSpace = MethodIdentifierRaw / KeywordMethodNameNoSpace ;
+
+LabelNameNoSpace = IdentifierRaw / ("begin" / "def" / "class" / "module" / "while"
+  / "until" / "for" / "in" / "case" / "when" / "if" / "elsif" / "else"
+  / "and" / "not" / "or" / "do" / "rescue" / "ensure" / "retry"
+  / "unless" / "end" / "return" / "self" / "true" / "false" / "nil"
+  / "alias" / "yield" / "super" / "then" / "break" / "next" / "raise") ;
+SymbolLabelNameNoSpace = MethodIdentifierWithSuffixRaw / LabelNameNoSpace ;
+
+ConstNameRaw = ConstStart IdentCont* ;
+ConstName = Token(ConstNameRaw) ;
+ConstNameNoSpace = ConstNameRaw ;
+
+// ─── Variable References ────────────────────────────────────────────────────
+
+InstanceVarName = v:"@" !"@" n:IdentifierRaw InlineSpacing ${ InstanceVar("@" + flatText(n).trim) } ;
+ClassVarName = "@@" n:IdentifierRaw InlineSpacing ${ ClassVar("@@" + flatText(n).trim) } ;
+
+SpecialGlobalVar = "$!" / "$?" / "$@" / "$&" / "$`" / "$'" / "$+" / "$~"
+  / "$/" / "$\\" / "$," / "$\"" / "$." / "$;" / "$<" / "$>"
+  / "$_" / "$0" / "$:" / "$*" / "$=" / "$$" ;
+GlobalVarName = n:("$" IdentifierRaw / "$-" [a-zA-Z0-9_]+ / "$" Digit+ / SpecialGlobalVar) InlineSpacing ${ GlobalVar(flatText(n)) } ;
+
+// ─── Numeric Literals ───────────────────────────────────────────────────────
+
+DigitsWithUnderscore(d: ?) = d+ ("_" d+)* ;
+DecimalDigits = DigitsWithUnderscore(Digit) ;
+BinaryDigits = DigitsWithUnderscore(BinDigit) ;
+OctalDigits = DigitsWithUnderscore(OctDigit) ;
+HexDigits = DigitsWithUnderscore(HexDigit) ;
+
+IntegerLiteralRaw =
+    "0" [bB] BinaryDigits
+  / "0" [oO] OctalDigits
+  / "0" [dD] DecimalDigits
+  / "0" [xX] HexDigits
+  / "0" OctalDigits
+  / DecimalDigits ;
+
+FloatExponent = [eE] ("+" / "-")? DecimalDigits ;
+FloatLiteralRaw = DecimalDigits "." DecimalDigits FloatExponent?
+  / DecimalDigits FloatExponent ;
+
+NumericSuffix = "ri" / "ir" / "r" / "i" ;
+
+IntegerLiteral = v:IntegerLiteralRaw !("." Digit) NumericSuffix? !IdentCont InlineSpacing ${ IntLiteral(parseIntLit(v)) } ;
+FloatLiteral = v:FloatLiteralRaw NumericSuffix? !IdentCont InlineSpacing ${ FloatLiteral(parseFloatLit(v)) } ;
+
+// ?-char literals (e.g. ?a, ?\n, ?\u0041)
+CharLiteral = Token("?" (
+    "\\u{" HexDigit+ "}"
+  / "\\u" HexDigit HexDigit HexDigit HexDigit
+  / "\\x" HexDigit HexDigit
+  / "\\" [0-7] [0-7]? [0-7]?
+  / "\\M-\\C-" .
+  / "\\C-" .
+  / "\\M-" .
+  / "\\" .
+  / ![, \t\r\n] .
+)) ${ StringLiteral(flatText(__result).trim) } ;
+
+// ─── String Escapes ─────────────────────────────────────────────────────────
+
+EscapeSeq = "\\u{" HexDigit+ "}"
+  / "\\u" HexDigit HexDigit HexDigit HexDigit
+  / "\\x" HexDigit HexDigit
+  / "\\" [0-7] [0-7]? [0-7]?
+  / "\\" . ;
+
+// ─── String Interpolation (mutual recursion with Expr) ──────────────────────
+// InterpChunk: content inside #{...} — handles nested braces and quotes
+
+InterpInnerQuoteD = "\"" (EscapeSeq / !"\"" .)* "\"" ;
+InterpInnerQuoteS = "'" (!"'" "\\" . / !"'" .)* "'" ;
+InterpInnerBrace  = "{" InterpInnerChunk* "}" ;
+InterpInnerChunk  = InterpInnerQuoteD / InterpInnerQuoteS / InterpInnerBrace / !"}" . ;
+
+Interp = "#{" InlineSpacing InterpInnerChunk* "}" ;
+
+// ─── Double-Quoted Strings ───────────────────────────────────────────────────
+
+DqChar = EscapeSeq / Interp / (!"\"" !"\\" !"#{" .) ;
+DoubleQuotedStringRaw = "\"" DqChar* "\"" ;
+DoubleQuotedString = Token(DoubleQuotedStringRaw) ${ StringLiteral(flatText(__result).trim, UnknownSpan) } ;
+AdjacentString = DoubleQuotedStringRaw DoubleQuotedStringRaw+ InlineSpacing ;
+
+// ─── Single-Quoted Strings ───────────────────────────────────────────────────
+
+SqChar = "\\" "'" / "\\" "\\" / !"'" . ;
+SingleQuotedString = Token("'" SqChar* "'") ${ StringLiteral(flatText(__result).trim, UnknownSpan) } ;
+
+// ─── Backtick Command Strings ────────────────────────────────────────────────
+
+BtChar = EscapeSeq / Interp / (!"`" !"\\" !"#{" .) ;
+BacktickString = Token("`" BtChar* "`") ;
+
+// ─── Percent Literals ────────────────────────────────────────────────────────
+// Nested-paren variants for %q(...), %Q(...), %w(...), etc.
+
+PercentQParen = "(" (PercentQParen / EscapeSeq / !"(" !")" .)* ")" ;
+PercentQBrace = "{" (PercentQBrace / EscapeSeq / !"{" !"}" .)* "}" ;
+PercentQBrack = "[" (PercentQBrack / EscapeSeq / !"[" !"]" .)* "]" ;
+PercentQAngle = "<" (PercentQAngle / EscapeSeq / !"<" !">" .)* ">" ;
+PercentQBar   = "|" (EscapeSeq / !"|" .)* "|" ;
+PercentQSlash = "/" (EscapeSeq / !"/" .)* "/" ;
+PercentQDelim = PercentQParen / PercentQBrace / PercentQBrack / PercentQAngle / PercentQBar / PercentQSlash ;
+
+// Interpolated percent variants
+PercentIParen = "(" (PercentIParen / EscapeSeq / Interp / !"(" !")" !"#{" .)* ")" ;
+PercentIBrace = "{" (PercentIBrace / EscapeSeq / Interp / !"{" !"}" !"#{" .)* "}" ;
+PercentIBrack = "[" (PercentIBrack / EscapeSeq / Interp / !"[" !"]" !"#{" .)* "]" ;
+PercentIAngle = "<" (PercentIAngle / EscapeSeq / Interp / !"<" !">" !"#{" .)* ">" ;
+PercentIBar   = "|" (EscapeSeq / Interp / !"|" !"#{" .)* "|" ;
+PercentIDelim = PercentIParen / PercentIBrace / PercentIBrack / PercentIAngle / PercentIBar ;
+
+PercentLiteralRaw = "%" ([qQ] PercentQDelim / [wWiI] PercentQDelim / [rR] PercentIDelim / [xX] PercentIDelim / [sS] PercentQDelim / PercentIDelim) ;
+PercentLiteral = Token(PercentLiteralRaw) ;
+
+// ─── Regex Literals ──────────────────────────────────────────────────────────
+
+RegexChar = EscapeSeq / Interp / (!"/" !"\\" !"#{" .) ;
+RegexFlags = [imxouesn]* ;
+RegexLiteral = Token("/" RegexChar+ "/" RegexFlags !"=") ;
+// Regex at call argument position (may be empty)
+ArgRegexLiteral = Token("/" RegexChar* "/" RegexFlags !"=") ;
+
+// ─── Symbol Literals ─────────────────────────────────────────────────────────
+
+OperatorSymbolName = "===" / "<=>" / "=~" / "!~"
+  / "<<" / ">>" / "**"
+  / "<=" / ">=" / "!=" / "==" / "<" / ">"
+  / "[]=" / "[]"
+  / [-+*/%&|^~`@]+ ;
+
+GlobalVarRaw = "$" IdentifierRaw / "$-" [a-zA-Z0-9_]+ / "$" Digit+ / SpecialGlobalVar ;
+SimpleSymbolRaw = ":" !":"
+  ( SymbolLabelNameNoSpace
+  / OperatorSymbolName
+  / GlobalVarRaw
+  ) ;
+SimpleSymbol = Token(SimpleSymbolRaw) ;
+QuotedSymbol = Token(":" (DoubleQuotedStringRaw / "'" SqChar* "'")) ;
+PercentSymbol = Token("%" [sS] PercentQDelim) ;
+SymbolLiteral = SimpleSymbol / QuotedSymbol / PercentSymbol ${ SymbolLiteral(flatText(__result).trim, UnknownSpan) } ;
+
+// ─── Operator Tokens ──────────────────────────────────────────────────────────
+
+Sym(op: ?) = Token(op) ;
+
+AssignEq   = Token("=" !"=" !">" !"~") ;
+LabelColon = Token(":" !":") ;
+MemberSep  = Token("&.") / Token("::") / Token(".") ;
+
+// Compound assignment operators
+CompoundAssignOp =
+    "+=" / "-=" / "**=" / "*=" / "/=" / "%="
+  / "<<=" / ">>="
+  / "&=" / "|=" / "^="
+  / "&&=" / "||=" ;
+
+// ─── Array and Hash Literals ─────────────────────────────────────────────────
+
+ArrayLiteral = Token("[") Spacing (ArgExpr (Spacing "," Spacing ArgExpr)* (Spacing ",")? Spacing)? Token("]") ${ buildArrayLiteral(__result) } ;
+
+HashEntryRocket = ArgExpr Spacing Token("=>") Spacing ArgExpr ;
+HashEntryLabel  = LabelNameNoSpace LabelColon Spacing ArgExpr
+                / SymbolLiteral LabelColon Spacing ArgExpr ;
+HashEntry = HashEntryRocket / HashEntryLabel ;
+HashBody  = HashEntry (Spacing "," Spacing HashEntry)* (Spacing ",")? ;
+HashLiteral = Token("{") Spacing HashBody? Spacing Token("}") ${ buildHashLiteral(__result) } ;
+
+// ─── Parenthesized Expression ─────────────────────────────────────────────────
+
+ParenExpr = Token("(") Spacing Expr Spacing Token(")") ;
+
+// ─── Lambda Literal ───────────────────────────────────────────────────────────
+
+LambdaParamItem = Token("**") Identifier? / Token("*") Identifier? / Token("&") Identifier
+  / Identifier (Spacing Token("=") Spacing Expr)? ;
+LambdaParamList = LambdaParamItem (Spacing "," Spacing LambdaParamItem)* ;
+LambdaParams = Token("(") Spacing LambdaParamList? Spacing Token(")") ;
+LambdaLiteral = Token("->") (LambdaParams / Identifier)? Spacing Block ;
+
+// ─── Blocks ───────────────────────────────────────────────────────────────────
+
+BlockParamItem = Token("**") Identifier? / Token("*") Identifier? / Token("&") Identifier
+  / Identifier (Spacing Token("=") Spacing Expr)? ;
+BlockParamList = BlockParamItem (Spacing "," Spacing BlockParamItem)* ;
+BlockParams = Token("|") Spacing BlockParamList? Spacing Token(";") Spacing BlockParamList? Spacing Token("|")
+            / Token("|") Spacing BlockParamList? Spacing Token("|") ;
+
+BraceBlock = Token("{") Spacing BlockParams? Spacing BlockStatements Spacing Token("}") ;
+DoBlock    = Kw("do") Spacing BlockParams? Spacing BlockStatements Spacing Kw("end") ;
+// Leading InlineSpacing allows `arr.each { ... }` and `arr.each do ... end` where the
+// receiver method name is parsed raw (no Token), leaving a space before the block opener.
+Block      = InlineSpacing (BraceBlock / DoBlock) ;
+
+// ─── Call Arguments ───────────────────────────────────────────────────────────
+
+ForwardingArg     = Token("...") ;
+BlockPassArg      = Token("&") Spacing ArgExpr ;
+DoubleSplatArg    = Token("**") Spacing ArgExpr ;
+SplatArg          = Token("*") Spacing ArgExpr ;
+KeywordArg        = LabelNameNoSpace LabelColon Spacing ArgExpr ;
+QuotedKeywordArg  = (DoubleQuotedStringRaw / "'" SqChar* "'") LabelColon Spacing ArgExpr ;
+HashRocketArg     = Expr Spacing Token("=>") Spacing ArgExpr ;
+
+ArgExpr = ForwardingArg
+        / BlockPassArg
+        / DoubleSplatArg
+        / SplatArg
+        / QuotedKeywordArg
+        / KeywordArg
+        / Expr ;
+
+// HashRocketArg separated so ArgExpr is non-left-recursive; used via CallArgItem
+CallArgItem = HashRocketArg / ArgExpr ;
+CallArgList = CallArgItem (Spacing "," Spacing CallArgItem)* (Spacing ",")? ;
+CallArgs = Token("(") Spacing CallArgList? Spacing Token(")") ;
+
+// Command-style arguments (no parens, space-separated)
+PostfixModifierKw = Kw("if") / Kw("unless") / Kw("while") / Kw("until") / Kw("rescue") ;
+CommandArgGuard = !PostfixModifierKw ;
+CommandArgList = CallArgItem (InlineSpacing "," Spacing CallArgItem)* (InlineSpacing ",")? ;
+
+// ─── Primary Expressions (no call / no command) ───────────────────────────────
+
+BoolLiteralTrue  = Kw("true")  ${ BoolLiteral(value = true) } ;
+BoolLiteralFalse = Kw("false") ${ BoolLiteral(value = false) } ;
+BoolLiteral      = BoolLiteralTrue / BoolLiteralFalse ;
+NilLiteral  = Kw("nil")  ${ NilLiteral() } ;
+SelfExpr    = Kw("self") ${ SelfExpr() } ;
+
+YieldExpr  = Kw("yield") (CallArgs / CommandArgGuard CommandArgList)? ;
+SuperExpr  = Kw("super") (CallArgs / CommandArgGuard CommandArgList)? ;
+DefinedExpr = Token("defined?") Token("(") Spacing Expr Spacing Token(")") ;
+ReturnExprInner = Kw("return") (InlineSpacing ArgExpr)? ;
+NextExprInner   = Kw("next") (InlineSpacing ArgExpr)? ;
+BreakExprInner  = Kw("break") (InlineSpacing ArgExpr)? ;
+RaiseExprInner  = Kw("raise") (InlineSpacing ArgExpr)? ;
+
+PrimaryNoCall =
+    FloatLiteral
+  / IntegerLiteral
+  / CharLiteral
+  / BacktickString
+  / AdjacentString
+  / DoubleQuotedString
+  / SingleQuotedString
+  / PercentLiteral
+  / ArgRegexLiteral
+  / SymbolLiteral
+  / ArrayLiteral
+  / HashLiteral
+  / BoolLiteral
+  / NilLiteral
+  / SelfExpr
+  / DefinedExpr
+  / YieldExpr
+  / SuperExpr
+  / LambdaLiteral
+  / BeginExpr
+  / IfExpr
+  / UnlessExpr
+  / WhileExpr
+  / UntilExpr
+  / CaseExpr
+  / ClassExpr
+  / ModuleExpr
+  / DefExpr
+  / ParenExpr
+  / ClassVarName
+  / InstanceVarName
+  / GlobalVarName
+  / ConstPath
+  / IdentifierExpr ;
+
+ConstPath = Token(ConstNameRaw ("::" ConstNameRaw)*) ;
+ConstRef = ConstPath ${ ConstRef(flatText(__result).trim.split("::").toList, UnknownSpan) } ;
+
+// ─── Function & Command Calls ─────────────────────────────────────────────────
+// No-space function call: foo(args) — must have no space before '('
+FunctionCall = MethodIdentifier !HorizontalSpaceChar CallArgs ${ buildFunctionCall(__result) } ;
+
+ReceiverForCommand = ConstRef / SelfExpr / AdjacentString / DoubleQuotedString / SingleQuotedString / ParenExpr / ClassVarName / InstanceVarName / GlobalVarName / Identifier ;
+
+// ─── Postfix Expressions & Call Chains ────────────────────────────────────────
+
+IndexSuffix        = Token("[") Spacing CallArgList? Spacing Token("]") ;
+DotCallSuffix      = MemberSep ReceiverMethodNameNoSpace CallArgs? Block? ;
+BraceBlockSuffix   = InlineSpacing BraceBlock ;
+DoBlockSuffix      = InlineSpacing DoBlock ;
+CallArgSuffix      = CallArgs Block? ;
+
+CallSuffix = DotCallSuffix / IndexSuffix / BraceBlockSuffix / DoBlockSuffix ;
+CallSuffixNoBlock  = DotCallSuffix / IndexSuffix / BraceBlockSuffix ;
+
+PostfixExpr      = (FunctionCall / PrimaryNoCall) CallSuffix* ${ buildPostfixExpr(__result) } ;
+PostfixExprNB    = (FunctionCall / PrimaryNoCall) CallSuffixNoBlock* ${ buildPostfixExpr(__result) } ;
+
+// ─── Operator Precedence Hierarchy ────────────────────────────────────────────
+// (NB = NoBlock: used in loop/for conditions to avoid eating `do` keyword)
+
+// Power (right-associative)
+PowerExpr   = PostfixExpr (Token("**") Spacing PowerExpr)? ${ foldPowerOp(__result) } ;
+PowerExprNB = PostfixExprNB (Token("**") Spacing PowerExprNB)? ${ foldPowerOp(__result) } ;
+
+// Unary
+UnaryExprPrefix   = op:(Kw("not") / Token("!") / Token("~") / Token("*") / Token("-") / Token("+")) Spacing e:UnaryExpr ${ UnaryOp(flatText(op).trim, toExpr(e)) } ;
+UnaryExpr         = UnaryExprPrefix / PowerExpr HorizontalSpacing ;
+UnaryExprNBPrefix = op:(Kw("not") / Token("!") / Token("~") / Token("*") / Token("-") / Token("+")) Spacing e:UnaryExprNB ${ UnaryOp(flatText(op).trim, toExpr(e)) } ;
+UnaryExprNB       = UnaryExprNBPrefix / PowerExprNB HorizontalSpacing ;
+
+// Multiplicative
+MulDivExpr   = UnaryExpr ((Token("*" !"=" !"*") / Token("/" !"=") / Token("%" !"=")) Spacing UnaryExpr)* ${ foldBinOps(__result) } ;
+MulDivExprNB = UnaryExprNB ((Token("*" !"=" !"*") / Token("/" !"=") / Token("%" !"=")) Spacing UnaryExprNB)* ${ foldBinOps(__result) } ;
+
+// Additive
+AddSubExpr   = MulDivExpr ((Token("+" !"=") / Token("-" !"=" !">" !">")) Spacing MulDivExpr)* ${ foldBinOps(__result) } ;
+AddSubExprNB = MulDivExprNB ((Token("+" !"=") / Token("-" !"=" !">" !">")) Spacing MulDivExprNB)* ${ foldBinOps(__result) } ;
+
+// Shift
+ShiftExpr   = AddSubExpr ((Token("<<") / Token(">>")) Spacing AddSubExpr)* ${ foldBinOps(__result) } ;
+ShiftExprNB = AddSubExprNB ((Token("<<") / Token(">>")) Spacing AddSubExprNB)* ${ foldBinOps(__result) } ;
+
+// Bitwise AND
+BitAndExpr   = ShiftExpr (Token("&" !"&" !"=") Spacing ShiftExpr)* ${ foldBinOps(__result) } ;
+BitAndExprNB = ShiftExprNB (Token("&" !"&" !"=") Spacing ShiftExprNB)* ${ foldBinOps(__result) } ;
+
+// Bitwise OR/XOR
+BitOrExpr   = BitAndExpr ((Token("|" !"|" !"=") / Token("^" !"=")) Spacing BitAndExpr)* ${ foldBinOps(__result) } ;
+BitOrExprNB = BitAndExprNB ((Token("|" !"|" !"=") / Token("^" !"=")) Spacing BitAndExprNB)* ${ foldBinOps(__result) } ;
+
+// Relational
+RelExpr   = BitOrExpr ((Token("<=") / Token(">=") / Token("<" !"<" !"=") / Token(">" !">" !"=")) Spacing BitOrExpr)* ${ foldBinOps(__result) } ;
+RelExprNB = BitOrExprNB ((Token("<=") / Token(">=") / Token("<" !"<" !"=") / Token(">" !">" !"=")) Spacing BitOrExprNB)* ${ foldBinOps(__result) } ;
+
+// Equality
+EqExpr   = RelExpr ((Token("===") / Token("<=>") / Token("==") / Token("!=") / Token("=~") / Token("!~")) Spacing RelExpr)* ${ foldBinOps(__result) } ;
+EqExprNB = RelExprNB ((Token("===") / Token("<=>") / Token("==") / Token("!=") / Token("=~") / Token("!~")) Spacing RelExprNB)* ${ foldBinOps(__result) } ;
+
+// Range
+RangeOp = Token("...") / Token("..") ;
+RangeExprNormal   = EqExpr (RangeOp EqExpr?)? ${ foldRange(__result) } ;
+RangeExprBeginless = RangeOp EqExpr ${ beginlessRange(__result) } ;
+RangeExpr         = RangeExprNormal / RangeExprBeginless ;
+RangeExprNBNormal   = EqExprNB (RangeOp EqExprNB)? ${ foldRange(__result) } ;
+RangeExprNBBeginless = RangeOp EqExprNB ${ beginlessRange(__result) } ;
+RangeExprNB         = RangeExprNBNormal / RangeExprNBBeginless ;
+
+// Logical AND (symbol)
+AndExpr   = RangeExpr (Token("&&" !"=") Spacing RangeExpr)* ${ foldBinOps(__result) } ;
+AndExprNB = RangeExprNB (Token("&&" !"=") Spacing RangeExprNB)* ${ foldBinOps(__result) } ;
+
+// Logical OR (symbol)
+OrExpr   = AndExpr (Token("||" !"=") Spacing AndExpr)* ${ foldBinOps(__result) } ;
+OrExprNB = AndExprNB (Token("||" !"=") Spacing AndExprNB)* ${ foldBinOps(__result) } ;
+
+// Pattern match `in`
+InMatchExpr = OrExpr (Kw("in") Spacing Pat)? ;
+
+// Ternary
+CondExpr   = InMatchExpr (Spacing Token("?") Spacing Expr Spacing ":" !":" InlineSpacing Spacing Expr)? ${ foldTernary(__result) } ;
+CondExprNB = OrExprNB ;
+
+// ─── Assignment ────────────────────────────────────────────────────────────────
+
+// Assignable lvalues
+AssignableLhs = ClassVarName / InstanceVarName / GlobalVarName / ConstPath / Identifier ;
+// MultiAssignLhs requires either a comma (a, b = ...) or a leading splat (*a = ...)
+// to distinguish from plain single-var assign (which ExprWithCmdArgs handles)
+MultiAssignLhsPart = SplatArg / AssignableLhs ;
+MultiAssignLhsWithComma = AssignableLhs (Spacing "," Spacing MultiAssignLhsPart)+ ;
+MultiAssignLhsSplat    = SplatArg (Spacing "," Spacing MultiAssignLhsPart)* ;
+MultiAssignLhs = MultiAssignLhsWithComma / MultiAssignLhsSplat ;
+IndexAssignLhs = (FunctionCall / PrimaryNoCall) (CallSuffixNoBlock* IndexSuffix) ;
+
+AssignRhs = CommandCall / Expr ;
+
+AssignExpr =
+    // x, y = expr (multi-assign at statement level handled separately)
+    // index assignment: a[i] = v
+    CondExpr (
+        Token(CompoundAssignOp) Spacing AssignExpr
+      / AssignEq Spacing AssignExpr
+    )? ${ buildAssignExpr(__result) } ;
+
+// Keyword-level logical operators (lowest precedence in Ruby)
+KeywordNotExprNot = Kw("not") e:KeywordNotExpr ${ UnaryOp("not", toExpr(e)) } ;
+KeywordNotExpr = KeywordNotExprNot / AssignExpr ;
+KeywordAndExpr = KeywordNotExpr (Kw("and") Spacing (CommandCall / KeywordNotExpr))* ${ foldBinOps(__result) } ;
+KeywordOrExpr  = KeywordAndExpr (Kw("or") Spacing (CommandCall / KeywordAndExpr))* ${ foldBinOps(__result) } ;
+
+Expr = KeywordOrExpr ;
+
+// ─── Pattern Matching (in/case-in) ───────────────────────────────────────────
+
+PatPin = Token("^") (AssignableLhs / Token("(") Spacing Expr Spacing Token(")")) ;
+PatSplat = Token("*") Identifier? ;
+PatArrayElem = PatSplat / Pat ;
+PatArrayBody = PatArrayElem (Spacing "," Spacing PatArrayElem)* (Spacing ",")? ;
+PatArray = Token("[") Spacing PatArrayBody? Spacing Token("]") ;
+
+PatHashEntry = SimpleSymbolRaw Token("=>") Spacing Pat
+             / LabelNameNoSpace LabelColon (Spacing Pat)? ;
+PatHashBody = PatHashEntry (Spacing "," Spacing PatHashEntry)* (Spacing ",")? ;
+PatHash = Token("{") Spacing PatHashBody? Spacing Token("}") ;
+
+PatDeconstruct = ConstRef Token("(") Spacing PatArrayBody? Spacing Token(")") ;
+
+PatPrimary = PatPin
+           / BoolLiteral / NilLiteral / SelfExpr
+           / FloatLiteral / IntegerLiteral / CharLiteral
+           / DoubleQuotedString / SingleQuotedString / SymbolLiteral
+           / PatDeconstruct / PatArray / PatHash
+           / ConstPath / Identifier ;
+
+PatOr = PatPrimary (Spacing Token("|") Spacing PatPrimary)* ;
+
+Pat = EqExpr RangeOp EqExpr?
+    / RangeOp EqExpr
+    / PatOr (Spacing Kw("if") Spacing Expr)? ;
+
+InClausePat = Pat (Spacing "," Spacing Pat)* ;
+
+// ─── Statement Separator ──────────────────────────────────────────────────────
+
+StatementSep = InlineSpacing (NewlineChar / ";") InlineSpacing ;
+StatementSeps = StatementSep+ ;
+
+// ─── Rescue / Ensure / Else clauses ──────────────────────────────────────────
+
+RescueTypes = Expr (Spacing "," Spacing Expr)* ;
+RescueClause = Kw("rescue") (Spacing RescueTypes)? (Spacing Token("=>") Spacing Identifier)? StatementSeps? BlockStatements ;
+EnsureClause = Kw("ensure") StatementSeps? BlockStatements ;
+ElseSepClause = Kw("else") StatementSeps? BlockStatements ;
+RescueBlock = RescueClause+ (ElseSepClause / EnsureClause)* / EnsureClause ;
+BodyWithRescue = BlockStatements RescueBlock? ;
+
+// ─── Block Body ───────────────────────────────────────────────────────────────
+// BlockStatements: list of statements separated by StatementSep, stopping at keywords
+// that signal end of block.
+
+BlockStatements = (Statement StatementSeps)* Statement? Spacing ;
+TopStatements   = StatementSep* (Statement (StatementSep+ Statement)* StatementSep*)? ;
+
+// ─── Keyword Statement Forms ─────────────────────────────────────────────────
+
+// if/unless as expressions (used inside other expressions)
+IfExpr     = Kw("if") Spacing cond:Expr StatementSep body:BodyWithRescue
+               elsifs:(Kw("elsif") Spacing Expr StatementSep BodyWithRescue)*
+               elseOpt:(Kw("else") StatementSep? BodyWithRescue)?
+               Kw("end") ${ buildIfExpr(cond, body, elsifs, elseOpt) } ;
+UnlessExpr = Kw("unless") Spacing cond:Expr StatementSep body:BodyWithRescue
+               elseOpt:(Kw("else") StatementSep? BodyWithRescue)?
+               Kw("end") ${ buildUnlessExpr(cond, body, elseOpt) } ;
+WhileExpr  = Kw("while") Spacing cond:CondExprNB (StatementSep / Kw("do") StatementSep?) body:BodyWithRescue Kw("end") ${ buildWhileExpr(cond, body) } ;
+UntilExpr  = Kw("until") Spacing cond:CondExprNB (StatementSep / Kw("do") StatementSep?) body:BodyWithRescue Kw("end") ${ buildUntilExpr(cond, body) } ;
+
+// case
+WhenClause = Kw("when") Spacing Expr (Spacing "," Spacing Expr)* (Kw("then") / StatementSep) BlockStatements ;
+InClause   = Kw("in") Spacing InClausePat (Kw("then") / StatementSep) BlockStatements ;
+CaseExpr   = Kw("case") scrutineeOpt:(Spacing Expr)? StatementSeps?
+               clauses:(WhenClause / InClause)+
+               elseOpt:(Kw("else") StatementSep? BlockStatements)?
+               Kw("end") ${ buildCaseExpr(scrutineeOpt, clauses, elseOpt) } ;
+
+// begin
+BeginExpr  = Kw("begin") StatementSeps? body:BodyWithRescue Kw("end") ${ buildBeginExpr(body) } ;
+
+// for
+ForVar = Token("*") Identifier / Identifier ;
+ForVars = ForVar (Spacing "," Spacing ForVar)* ;
+ForExpr = Kw("for") Spacing vars:ForVars Spacing Kw("in") Spacing iter:CondExprNB
+             (Kw("do") / StatementSep)
+             body:BlockStatements
+             Kw("end") ${ buildForExpr(vars, iter, body) } ;
+
+// class / module
+ClassExpr  = Kw("class") Spacing nameOrReceiver:(Token("<<") Spacing Expr / ConstRef (Spacing Token("<") Spacing Expr)?) StatementSeps? body:BodyWithRescue Kw("end") ${ buildClassExpr(nameOrReceiver, body) } ;
+ModuleExpr = Kw("module") Spacing name:ConstRef StatementSeps? body:BodyWithRescue Kw("end") ${ buildModuleExpr(name, body) } ;
+
+// def
+DefParamItem = Token("**") Identifier?
+             / Token("*") Identifier?
+             / Token("&") Identifier?
+             / Token("...")
+             / Identifier (Spacing ":" Spacing)? (Spacing AssignEq Spacing Expr)?  ;
+DefParamList = DefParamItem (Spacing "," Spacing DefParamItem)* ;
+DefParams = Token("(") Spacing DefParamList? Spacing Token(")") ;
+BareDefParams = DefParamList ;
+
+DefReceiverSelf = Kw("self") Token(".") ;
+OperatorDefMethodName = "===" / "<=>" / "=~" / "!~" / "<<" / ">>" / "**" / "<=" / ">=" / "!=" / "==" / "<" / ">" / "[]=" / "[]" / "+" / "-" / "*" / "/" / "%" / "&" / "|" / "^" / "~" / "+@" / "-@" ;
+DefName = DefReceiverSelf? (Token(OperatorDefMethodName) / ReceiverMethodNameNoSpace) ;
+DefBody = AssignEq Spacing Expr    // endless def: def f(x) = x
+        / StatementSeps? BodyWithRescue Kw("end") ;
+DefExpr = Kw("def") Spacing name:DefName params:(DefParams / Spacing1 BareDefParams)? Spacing body:DefBody ${ buildDefExpr(name, params, body) } ;
+
+// alias
+AliasExpr = Kw("alias") Spacing (SymbolLiteral / MethodIdentifier) Spacing (SymbolLiteral / MethodIdentifier) ;
+
+// ─── Postfix Modifiers ────────────────────────────────────────────────────────
+
+PostfixModifier = InlineSpacing (Kw("if") / Kw("unless") / Kw("while") / Kw("until") / Kw("rescue")) Spacing Expr ;
+
+// ─── Statements ───────────────────────────────────────────────────────────────
+
+// Keyword-statement guard: first char is one of [bwufcdmai] (begin/while/until/for/case/def/module/if/alias)
+KeywordStmtGuard = [bwufcdmai] ;
+
+KeywordStatement = IfExpr / UnlessExpr / WhileExpr / UntilExpr / ForExpr
+                 / CaseExpr / BeginExpr / ClassExpr / ModuleExpr / DefExpr
+                 / AliasExpr ;
+
+ReturnStmt = Kw("return") (InlineSpacing CallArgList)? ${ buildReturnStmt(__result) } ;
+NextStmt   = Kw("next") (InlineSpacing ArgExpr)? ;
+BreakStmt  = Kw("break") (InlineSpacing ArgExpr)? ;
+RaiseStmt  = Kw("raise") (InlineSpacing ArgExpr (InlineSpacing "," InlineSpacing ArgExpr)*)? ;
+RetryStmt  = Kw("retry") ;
+RedoStmt   = Kw("redo") ;
+
+// Multi-assignment statement: a, b = expr, expr
+MultiAssignRhs  = Expr (Spacing "," Spacing Expr)* (Spacing ",")? ;
+MultiAssignStmt = MultiAssignLhs Spacing AssignEq Spacing MultiAssignRhs ${ buildMultiAssignStmt(__result) } ;
+
+// Rightward assignment: expr => pat
+RightwardAssign = CondExpr Spacing Token("=>") Spacing Pat ;
+
+// Command-style call: `puts x`, `include Mixin`, etc.
+// Uses MethodIdentifierRaw (no Token/InlineSpacing), so the arg-separating space is NOT pre-consumed.
+CommandCallName = !ReservedWord MethodIdentifierRaw ;
+CommandCall = name:CommandCallName Spacing1 CommandArgGuard args:CommandArgList Block? ${ buildCommandCall(name, args) } ;
+
+// ExprWithCmdArgs: parse an expression then optionally append command-style arguments.
+// Handles: `x = foo arg`, `obj.method arg`, `$:.unshift x`, etc.
+// Guard: args must start with a non-operator character to avoid ambiguity (e.g. y + z stays as binary op)
+CommandArgStartSafe = [a-zA-Z_0-9\"'`@$!:[(] ;
+ExprWithCmdArgsGuard = &CommandArgStartSafe !PostfixModifierKw ;
+ExprWithCmdArgsTail = ExprWithCmdArgsGuard CommandArgList Block? ;
+ExprWithCmdArgs = base:Expr tail:ExprWithCmdArgsTail? ${ buildExprWithCmdArgs(base, tail) } ;
+
+SimpleStatement = ReturnStmt / NextStmt / BreakStmt / RaiseStmt / RetryStmt / RedoStmt
+                / MultiAssignStmt / CommandCall / ExprWithCmdArgs ;
+
+Statement = &KeywordStmtGuard KeywordStatement PostfixModifier?
+          / SimpleStatement PostfixModifier? ;
+
+// ─── Top-Level Program ────────────────────────────────────────────────────────
+
+Program = Spacing TopStatements !. ${ buildProgram(__result) } ;

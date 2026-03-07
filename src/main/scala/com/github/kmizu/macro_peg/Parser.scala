@@ -32,8 +32,11 @@ object Parser {
       'n' -> '\n', 'r' -> '\r', 't' -> '\t', 'f' -> '\f'
     )
     def root: Parser[Grammar] = GRAMMAR
-    lazy val GRAMMAR: Parser[Grammar] = rule((loc <~ Spacing) ~ Directive.* ~ Definition.* <~ EndOfFile) ^^ {
-      case pos ~ directives ~ rules => Grammar(Position(pos.line, pos.column), rules, directives)
+    lazy val GRAMMAR: Parser[Grammar] = rule((loc <~ Spacing) ~ HeadBlock.? ~ Directive.* ~ Definition.* <~ EndOfFile) ^^ {
+      case pos ~ preambleOpt ~ directives ~ rules => Grammar(Position(pos.line, pos.column), rules, directives, preambleOpt.getOrElse(""))
+    }
+    lazy val HeadBlock: Parser[String] = rule {
+      (string("head") <~ Spacing) ~> LBRACE ~> ActionBody <~ RBRACE <~ Spacing
     }
 
     // ── Directives ──────────────────────────────────────────────────────────
@@ -126,13 +129,17 @@ object Parser {
     )
 
     lazy val Definition: Parser[Rule] =
-      rule(Annotation.* ~ Ident ~ (COLON ~> ReturnType).? ~ ((LPAREN ~> Arg.repeat1By(COMMA) <~ RPAREN).? <~ EQ) ~ (Expression <~ SEMI_COLON).commit) ^^ {
-        case anns ~ name ~ retType ~ argsOpt ~ body =>
+      rule(Annotation.* ~ Ident ~ (COLON ~> ReturnType).? ~ ((LPAREN ~> Arg.repeat1By(COMMA) <~ RPAREN).? <~ EQ) ~ (Expression ~ ActionBlock.? <~ SEMI_COLON).commit) ^^ {
+        case anns ~ name ~ retType ~ argsOpt ~ (body ~ actionOpt) =>
           val argsWithTypes = argsOpt.getOrElse(List())
+          val finalBody = actionOpt match {
+            case Some(action) => Sequence(body.pos, body, action)
+            case None => body
+          }
           Rule(
             name.pos,
             name.name,
-            body,
+            finalBody,
             argsWithTypes.map(_._1.name),
             argsWithTypes.map(_._2),
             retType,
@@ -163,12 +170,25 @@ object Parser {
       val x :: xs = ns; xs.foldLeft(x){(a, y) => Alternation(y.pos, a, y)}
     })
 
-    // Sequencable: a chain of elements connected by implicit sequence, <~, or ~>
-    // Optionally followed by an action block: => { scalaCode }
+    // Sequencable: a chain of elements connected by implicit sequence, <~, or ~>,
+    // optionally split by the `^` cut operator, and optionally followed by
+    // an action block: => { scalaCode }
     lazy val Sequencable: Parser[Expression] = rule(
-      ProjectedSequence ~ ActionSuffix.? ^^ {
+      CutSequence ~ ActionSuffix.? ^^ {
         case body ~ None => body
-        case body ~ Some((apos, code)) => ActionBlock(apos, body, code)
+        case body ~ Some((apos, code)) => Ast.ActionBlock(apos, body, code)
+      }
+    )
+
+    // CUT_OP matches the `^` cut operator in sequence position.
+    // Note: `^` inside [...] (character class) is handled separately by CLASS; inside "..." by Literal.
+    // A bare `^` between sequence elements is the commit/cut operator.
+    lazy val CUT_OP: Parser[Unit] = chr('^') <~ Spacing ^^ { _ => () }
+    lazy val CutSequence: Parser[Expression] = rule(
+      ProjectedSequence ~ (loc ~ (CUT_OP ~> ProjectedSequence)).? ^^ {
+        case before ~ None => before
+        case before ~ Some(cutLoc ~ after) =>
+          Sequence(before.pos, before, Cut(Position(cutLoc.line, cutLoc.column), after))
       }
     )
 
@@ -213,6 +233,7 @@ object Parser {
     lazy val Primary: Parser[Expression]    = rule(
       (loc <~ Debug) ~ (LPAREN ~> Expression <~ RPAREN) ^^ { case loc ~ body => Ast.Debug(Position(loc.line, loc.column), body)}
     | IdentifierWithoutSpace ~ (LPAREN ~> Expression.repeat0By(COMMA) <~ RPAREN) ^^ { case name ~ params => Ast.Call(Position(name.pos.line, name.pos.column), name.name, params) }
+    | LabeledExpr
     | Ident
     | CLASS
     | (OPEN ~> (Ident.repeat0By(COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Function(Position(loc.line, loc.column), ids.map(_.name), body) }
@@ -220,6 +241,11 @@ object Parser {
     | loc <~ DOT ^^ { case pos => Wildcard(Position(pos.line, pos.column)) }
     | loc <~ chr('_') ^^ { case pos => StringLiteral(Position(pos.line, pos.column), "") }
     | Literal
+    )
+    lazy val LabeledExpr: Parser[Labeled] = rule(
+      IdentifierWithoutSpace ~ (chr(':') <~ Spacing) ~ Suffix ^^ {
+        case id ~ _ ~ body => Labeled(id.pos, id.name.name, body)
+      }
     )
     lazy val loc: Parser[Location] = %
     lazy val IdentifierWithoutSpace: Parser[Identifier] = rule(loc ~ IdentStart ~ IdentCont.* ^^ {
@@ -261,6 +287,24 @@ object Parser {
       }
     | not(META) ~> any ^^ { case c => c}
     )
+    lazy val ActionBlock: Parser[SemanticAction] = rule {
+      loc ~ (chr('$') ~> LBRACE ~> ActionBody <~ RBRACE) <~ Spacing ^^ {
+        case pos ~ code => SemanticAction(Position(pos.line, pos.column), code)
+      }
+    }
+    lazy val ActionBody: Parser[String] = rule {
+      (ActionBodyChunk).* ^^ { case chunks => chunks.mkString }
+    }
+    lazy val ActionBodyChunk: Parser[String] = rule {
+      // Nested braces
+      chr('{') ~ ActionBody ~ chr('}') ^^ { case _ ~ inner ~ _ => "{" + inner + "}" }
+      // String literals in action body
+    | chr('"') ~ (not(chr('"')) ~> any).* ~ chr('"') ^^ { case _ ~ cs ~ _ => "\"" + cs.mkString + "\"" }
+      // Any character except } and { and "
+    | (not(chr('}')) ~ not(chr('{')) ~ not(chr('"')) ~> any) ^^ { case c => c.toString }
+    }
+    lazy val LBRACE = chr('{') <~ Spacing
+    lazy val RBRACE = chr('}') <~ Spacing
     lazy val Debug = string("Debug") <~ Spacing
     lazy val LPAREN = chr('(') <~ Spacing
     lazy val RPAREN = chr(')') <~ Spacing

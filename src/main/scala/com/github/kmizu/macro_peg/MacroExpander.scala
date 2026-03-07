@@ -31,10 +31,20 @@ object MacroExpander {
     case Call(pos, name, params) => Call(pos, name, params.map(p => substitute(p, env)))
     case Function(pos, args, body) => Function(pos, args, substitute(body, env))
     case Debug(pos, b) => Debug(pos, substitute(b, env))
+    case Labeled(pos, label, b) => Labeled(pos, label, substitute(b, env))
+    case Cut(pos, b) => Cut(pos, substitute(b, env))
+    case SemanticAction(_, _) => exp  // action code is opaque Scala string — don't touch
     case other => other
   }
 
-  private def expand(exp: Expression, rules: Map[Symbol, Rule]): Expression = exp match {
+  private def expand(exp: Expression, rules: Map[Symbol, Rule]): Expression = {
+    // Expansion of a recursive higher-order grammar never terminates; callers run it on a
+    // worker thread with a timeout and interrupt it, so bail out as soon as that happens.
+    if(Thread.currentThread().isInterrupted) throw new InterruptedException("macro expansion cancelled")
+    expandNode(exp, rules)
+  }
+
+  private def expandNode(exp: Expression, rules: Map[Symbol, Rule]): Expression = exp match {
     case Call(pos, name, params) if rules.contains(name) =>
       val rule = rules(name)
       val newParams = params.map(p => expand(p, rules))
@@ -50,6 +60,9 @@ object MacroExpander {
     case NotPredicate(pos, b) => NotPredicate(pos, expand(b, rules))
     case Function(pos, args, body) => Function(pos, args, expand(body, rules))
     case Debug(pos, b) => Debug(pos, expand(b, rules))
+    case Labeled(pos, label, b) => Labeled(pos, label, expand(b, rules))
+    case Cut(pos, b) => Cut(pos, expand(b, rules))
+    case SemanticAction(_, _) => exp  // action code is opaque Scala string — don't touch
     case other => other
   }
 

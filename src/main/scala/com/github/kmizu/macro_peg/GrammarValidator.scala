@@ -30,6 +30,9 @@ object GrammarValidator {
         if(env(name) || ruleNames(name)) None
         else Some(GrammarError(pos, s"undefined rule or variable: ${name.name}", Some(s"define `${name.name}` before use")))
       case Function(_, args, body) => undefinedReference(body, env ++ args.toSet)
+      case Labeled(_, _, b) => undefinedReference(b, env)
+      case Cut(_, b) => undefinedReference(b, env)
+      case SemanticAction(_, _) => None
       case Debug(_, b) => undefinedReference(b, env)
       case ActionBlock(_, b, _) => undefinedReference(b, env)
       case LeftProject(_, l, r) => undefinedReference(l, env).orElse(undefinedReference(r, env))
@@ -59,9 +62,14 @@ object GrammarValidator {
       case Wildcard(_) => false
       case CharSet(_, _, _) => false
       case CharClass(_, _, _) => false
-      case Call(_, name, _) => if(env(name)) true else nullable.getOrElse(name, false)
-      case Identifier(_, name) => if(env(name)) true else nullable.getOrElse(name, false)
+      // Parameters (in env but not in rules) are treated as non-nullable;
+      // they will be expanded with concrete arguments at call sites.
+      case Call(_, name, _) => if(env(name) && !ruleNames(name)) false else nullable.getOrElse(name, false)
+      case Identifier(_, name) => if(env(name) && !ruleNames(name)) false else nullable.getOrElse(name, false)
       case Function(_, args, body) => exprNullable(body, env ++ args.toSet)
+      case Labeled(_, _, b) => exprNullable(b, env)
+      case Cut(_, b) => exprNullable(b, env)
+      case SemanticAction(_, _) => true
       case Debug(_, b) => exprNullable(b, env)
       case ActionBlock(_, b, _) => exprNullable(b, env)
       case LeftProject(_, l, r) => exprNullable(l, env) && exprNullable(r, env)
@@ -100,6 +108,9 @@ object GrammarValidator {
       case Call(_, _, args) =>
         args.foldLeft(Option.empty[GrammarError])((acc, a) => acc.orElse(nullableRepetition(a, env)))
       case Function(_, args, body) => nullableRepetition(body, env ++ args.toSet)
+      case Labeled(_, _, b) => nullableRepetition(b, env)
+      case Cut(_, b) => nullableRepetition(b, env)
+      case SemanticAction(_, _) => None
       case Debug(_, b) => nullableRepetition(b, env)
       case ActionBlock(_, b, _) => nullableRepetition(b, env)
       case LeftProject(_, l, r) => nullableRepetition(l, env).orElse(nullableRepetition(r, env))
@@ -139,6 +150,9 @@ object GrammarValidator {
           leadsToSelf(sym, ruleMapping(name).body, ruleMapping(name).args.toSet, visited + name)
         else None
       case Function(_, args, body) => leadsToSelf(sym, body, env ++ args.toSet, visited)
+      case Labeled(_, _, b) => leadsToSelf(sym, b, env, visited)
+      case Cut(_, b) => leadsToSelf(sym, b, env, visited)
+      case SemanticAction(_, _) => None
       case Debug(_, b) => leadsToSelf(sym, b, env, visited)
       case ActionBlock(_, b, _) => leadsToSelf(sym, b, env, visited)
       case LeftProject(_, l, r) =>
