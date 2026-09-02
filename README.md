@@ -124,6 +124,21 @@ Options: `-o/--out`, `--object`, `--package`, `--start`, `--backend rd|combinato
 Compiling the full Ruby grammar (`src/main/resources/ruby.mpeg`, ~1300 lines) takes about
 two seconds end to end.
 
+To regenerate a parser as part of your own sbt build, call the generator from a source
+generator so the `.mapeg` file is the single source of truth:
+
+```scala
+Compile / sourceGenerators += Def.task {
+  import com.github.kmizu.macro_peg.codegen.{ParserGenerator, Backend}
+  val grammar = IO.read(baseDirectory.value / "src" / "main" / "mapeg" / "expr.mapeg")
+  val out = (Compile / sourceManaged).value / "ExprParser.scala"
+  ParserGenerator.generateFromSource(grammar, backend = Backend.RecursiveDescent) match {
+    case Right(code) => IO.write(out, code); Seq(out)
+    case Left(err)   => sys.error(err.toString)
+  }
+}.taskValue
+```
+
 ## Language Parsers
 
 | Language | Coverage | Approach |
