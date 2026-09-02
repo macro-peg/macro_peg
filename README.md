@@ -105,6 +105,25 @@ import com.github.kmizu.macro_peg.codegen.ParserGenerator
 val source = ParserGenerator.generateFromSource("""S = "a" "b";""")
 ```
 
+### Compiling a `.mapeg` file from the command line
+
+`PegCompiler` turns a grammar file into a standalone Scala source file. The generated
+parser depends only on the `macro_peg` library at runtime (the recursive-descent backend, the
+default, needs nothing but the Scala standard library).
+
+```bash
+# Object name, package and start rule come from %object / %package / %start directives
+sbt "runMain com.github.kmizu.macro_peg.codegen.PegCompiler grammar.mapeg -o Parser.scala"
+
+# ...or override them explicitly
+sbt "runMain com.github.kmizu.macro_peg.codegen.PegCompiler grammar.mapeg \
+      --object MyParser --package com.example --start Program --backend rd -o MyParser.scala"
+```
+
+Options: `-o/--out`, `--object`, `--package`, `--start`, `--backend rd|combinator`, `--quiet`.
+Compiling the full Ruby grammar (`src/main/resources/ruby.mpeg`, ~1300 lines) takes about
+two seconds end to end.
+
 ## Language Parsers
 
 | Language | Coverage | Approach |
