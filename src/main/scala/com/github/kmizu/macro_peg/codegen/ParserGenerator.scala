@@ -3,15 +3,23 @@ package com.github.kmizu.macro_peg.codegen
 import com.github.kmizu.macro_peg.Ast
 import com.github.kmizu.macro_peg.Ast._
 import com.github.kmizu.macro_peg._
+import com.github.kmizu.macro_peg.ir.{Ir, Lowering}
 
 case class GenerationError(pos: Position, message: String, hint: Option[String] = None)
+
+sealed trait Backend
+object Backend {
+  case object Combinator extends Backend
+  case object RecursiveDescent extends Backend
+}
 
 object ParserGenerator {
   def generateFromSource(
     source: String,
     objectName: String = "GeneratedParser",
     packageName: Option[String] = None,
-    startRule: Symbol = Symbol("S")
+    startRule: Symbol = Symbol("S"),
+    backend: Backend = Backend.Combinator
   ): Either[Diagnostic, String] = {
     val parsed = try {
       Right(Parser.parse(source))
@@ -24,17 +32,18 @@ object ParserGenerator {
           hint = Some("fix grammar syntax before code generation")
         ))
     }
-    parsed.flatMap(grammar => generateWithSource(grammar, source, objectName, packageName, startRule))
+    parsed.flatMap(grammar => generateWithSource(grammar, source, objectName, packageName, startRule, backend))
   }
 
   def generate(
     grammar: Grammar,
     objectName: String = "GeneratedParser",
     packageName: Option[String] = None,
-    startRule: Symbol = Symbol("S")
+    startRule: Symbol = Symbol("S"),
+    backend: Backend = Backend.Combinator
   ): Either[Diagnostic, String] = {
     val source = renderGrammar(grammar)
-    generateWithSource(grammar, source, objectName, packageName, startRule)
+    generateWithSource(grammar, source, objectName, packageName, startRule, backend)
   }
 
   private def generateWithSource(
@@ -42,7 +51,8 @@ object ParserGenerator {
     source: String,
     objectName: String,
     packageName: Option[String],
-    startRule: Symbol
+    startRule: Symbol,
+    backend: Backend
   ): Either[Diagnostic, String] = {
     GrammarValidator.validate(grammar).left.map { err =>
       Diagnostic(
@@ -52,7 +62,7 @@ object ParserGenerator {
         hint = err.hint
       )
     }.flatMap { _ =>
-      generateInternal(grammar, source, objectName, packageName, startRule).left.map { err =>
+      generateInternal(grammar, source, objectName, packageName, startRule, backend).left.map { err =>
         Diagnostic(
           phase = DiagnosticPhase.Generation,
           message = err.message,
@@ -68,7 +78,8 @@ object ParserGenerator {
     source: String,
     objectName: String,
     packageName: Option[String],
-    startRule: Symbol
+    startRule: Symbol,
+    backend: Backend
   ): Either[GenerationError, String] = {
     val effectiveStart = grammar.directives.collectFirst { case StartDirective(r) => r }.getOrElse(startRule)
     val rawRuleNamesSet = grammar.directives.collect { case RawRuleDirective(n, _) => n }.toSet
@@ -78,10 +89,28 @@ object ParserGenerator {
 
     if(usesNewFormat(grammar)) {
       generatePlainScalaBackend(grammar, objectName, packageName, effectiveStart)
-    } else if(isFirstOrder(grammar)) {
-      generateCombinatorBackend(grammar, objectName, packageName, effectiveStart)
-    } else {
-      Right(generateInterpreterBackend(source, objectName, packageName, effectiveStart))
+    } else backend match {
+      case Backend.RecursiveDescent =>
+        // Try to inline higher-order macros first; if that fails, handle them natively via lambda params
+        val grammarToUse = tryInlineHigherOrder(grammar, effectiveStart) match {
+          case Some(inlined) => inlined
+          case None          => grammar  // fall back to original, higher-order rules handled as lambda params
+        }
+        generateRecursiveDescentBackend(grammarToUse, objectName, packageName, effectiveStart)
+
+      case Backend.Combinator =>
+        if(isFirstOrder(grammar)) {
+          generateCombinatorBackend(grammar, objectName, packageName, effectiveStart)
+        } else {
+          // Attempt aggressive inlining of higher-order macros (like compiler inlining).
+          // MacroExpander beta-reduces all Call sites, producing a first-order grammar.
+          tryInlineHigherOrder(grammar, effectiveStart) match {
+            case Some(inlined) =>
+              generateCombinatorBackend(inlined, objectName, packageName, effectiveStart)
+            case None =>
+              Right(generateInterpreterBackend(source, objectName, packageName, effectiveStart))
+          }
+        }
     }
   }
 
@@ -449,6 +478,27 @@ object ParserGenerator {
     )
   }
 
+  /** Try to inline all higher-order macro calls via beta reduction.
+   *  Returns Some(firstOrderGrammar) on success, None if expansion loops or fails.
+   *  Dead higher-order rule definitions are dropped after inlining. */
+  private def tryInlineHigherOrder(grammar: Grammar, startRule: Symbol, timeoutMs: Long = 3000L): Option[Grammar] = {
+    @volatile var result: Option[Grammar] = None
+    val worker = new Thread(() => {
+      try {
+        val expanded = MacroExpander.expandGrammar(grammar)
+        val firstOrderRules = expanded.rules.filter(_.args.isEmpty)
+        val inlined = expanded.copy(rules = firstOrderRules)
+        if(isFirstOrder(inlined) && inlined.rules.exists(_.name == startRule))
+          result = Some(inlined)
+      } catch { case _: Throwable => () }
+    }, "macro-expander-worker")
+    worker.setDaemon(true)
+    worker.start()
+    worker.join(timeoutMs)
+    if(worker.isAlive) worker.interrupt()  // stop a runaway (non-terminating) expansion
+    result
+  }
+
   private def generateCombinatorBackend(
     grammar: Grammar,
     objectName: String,
@@ -457,78 +507,661 @@ object ParserGenerator {
   ): Either[GenerationError, String] = {
     val ruleNameMap = buildRuleNameMap(grammar.rules)
 
-    def emitExpression(exp: Expression): Either[GenerationError, String] = exp match {
-      case Sequence(_, l, r) =>
-        for(le <- emitExpression(l); re <- emitExpression(r)) yield s"($le ~ $re)"
-      case Alternation(_, l, r) =>
-        for(le <- emitExpression(l); re <- emitExpression(r)) yield s"($le / $re)"
-      case Repeat0(_, b) =>
-        emitExpression(b).map(be => s"($be).*")
-      case Repeat1(_, b) =>
-        emitExpression(b).map(be => s"($be).+")
-      case Optional(_, b) =>
-        emitExpression(b).map(be => s"($be).?")
-      case AndPredicate(_, b) =>
-        emitExpression(b).map(be => s"($be).and")
-      case NotPredicate(_, b) =>
-        emitExpression(b).map(be => s"!($be)")
-      case StringLiteral(_, target) =>
-        Right("\"" + escapeString(target) + "\".s")
-      case Wildcard(_) =>
-        Right("any")
-      case CharClass(_, positive, elems) =>
-        val encodedElems = elems.map {
-          case CharRange(from, to) => s"${charLiteral(from)} to ${charLiteral(to)}"
-          case OneChar(ch) => s"Seq(${charLiteral(ch)})"
-        }.mkString(", ")
-        if(positive) Right(s"range($encodedElems)")
-        else Right(s"notIn(range($encodedElems))")
-      case CharSet(_, positive, elems) =>
-        val encodedElems = elems.toList.sorted.map(ch => s"Seq(${charLiteral(ch)})").mkString(", ")
-        if(positive) Right(s"range($encodedElems)")
-        else Right(s"notIn(range($encodedElems))")
-      case Identifier(pos, name) =>
-        ruleNameMap.get(name) match {
-          case Some(scalaName) => Right(s"refer($scalaName)")
-          case None => Left(GenerationError(pos, s"unknown identifier `${name.name}` during generation"))
-        }
-      case Call(pos, name, args) =>
-        if(args.nonEmpty) {
-          Left(GenerationError(pos, s"call `${name.name}` has arguments; first-order combinator backend cannot emit this", Some("use higher-order fallback backend")))
-        } else {
-          ruleNameMap.get(name) match {
-            case Some(scalaName) => Right(s"refer($scalaName)")
-            case None => Left(GenerationError(pos, s"unknown call target `${name.name}` during generation"))
+    // Build a left-associative ~ pattern string, e.g. ["l","_","r"] → "l ~ _ ~ r"
+    def buildCasePattern(labels: List[Option[String]]): String =
+      labels.map(_.getOrElse("_")).mkString(" ~ ")
+
+    // IR-based combinator emitter. Combinator is first-order only (higher-order is
+    // inlined by generateInternal before reaching here), so HoCall/ParamRef/Lambda
+    // are errors. Sequence/Alternation are N-ary in the IR; `~`/`/` are left-assoc
+    // operators, so a flat mkString reproduces the original left-nested semantics.
+    def emitCombinatorIr(exp: Ir.Expr): Either[GenerationError, String] = exp match {
+      case Ir.Expr.Seq(parts, Some(action)) =>
+        val hasLabels = parts.exists(_.label.isDefined)
+        parts.toList.foldLeft[Either[GenerationError, List[(Option[String], String)]]](Right(Nil)) {
+          case (acc, p) => for { list <- acc; emitted <- emitCombinatorIr(p.expr) } yield list :+ (p.label, emitted)
+        }.map { emittedParts =>
+          val seqStr = emittedParts.map(_._2).mkString(" ~ ")
+          if (hasLabels) {
+            val patStr = buildCasePattern(emittedParts.map(_._1))
+            s"($seqStr).map { case $patStr => { ${action.code} } }"
+          } else {
+            s"($seqStr).map { __result => { ${action.code} } }"
           }
         }
-      case Function(pos, _, _) =>
-        Left(GenerationError(pos, "lambda/function expression is not supported by first-order combinator backend", Some("use higher-order fallback backend")))
-      case Debug(_, b) =>
-        emitExpression(b).map(be => s"($be).display")
-      case ActionBlock(pos, _, _) =>
-        Left(GenerationError(pos, "action blocks are not supported by the combinator backend", Some("use the plain Scala backend by adding a directive or annotation")))
-      case LeftProject(pos, l, r) =>
-        for(le <- emitExpression(l); re <- emitExpression(r)) yield s"($le << $re)"
-      case RightProject(pos, l, r) =>
-        for(le <- emitExpression(l); re <- emitExpression(r)) yield s"($le >> $re)"
+      case Ir.Expr.Seq(parts, None) =>
+        if (parts.length == 1) emitCombinatorIr(parts.head.expr)
+        else parts.toList.foldLeft[Either[GenerationError, List[String]]](Right(Nil)) {
+          (acc, p) => for { list <- acc; e <- emitCombinatorIr(p.expr) } yield list :+ e
+        }.map(es => s"(${es.mkString(" ~ ")})")
+      case Ir.Expr.Alt(branches) =>
+        branches.toList.foldLeft[Either[GenerationError, List[String]]](Right(Nil)) {
+          (acc, b) => for { list <- acc; e <- emitCombinatorIr(b) } yield list :+ e
+        }.map(es => s"(${es.mkString(" / ")})")
+      case Ir.Expr.Rep(b, false) => emitCombinatorIr(b).map(be => s"($be).*")
+      case Ir.Expr.Rep(b, true)  => emitCombinatorIr(b).map(be => s"($be).+")
+      case Ir.Expr.Opt(b)        => emitCombinatorIr(b).map(be => s"($be).?")
+      case Ir.Expr.And(b)        => emitCombinatorIr(b).map(be => s"($be).and")
+      case Ir.Expr.Not(b)        => emitCombinatorIr(b).map(be => s"!($be)")
+      case Ir.Expr.Str(target)   => Right("\"" + escapeString(target) + "\".s")
+      case Ir.Expr.AnyChar       => Right("any")
+      case Ir.Expr.Chars(positive, ranges, singles) =>
+        val encoded = (ranges.toList.map { case (f, t) => s"${charLiteral(f)} to ${charLiteral(t)}" } ++
+                       singles.toList.sorted.map(ch => s"Seq(${charLiteral(ch)})")).mkString(", ")
+        if (positive) Right(s"range($encoded)") else Right(s"notIn(range($encoded))")
+      case Ir.Expr.RuleRef(id)   => Right(s"refer(${id.mangled})")
+      case Ir.Expr.Cut(b)        => emitCombinatorIr(b).map(be => s"($be).cut")
+      case Ir.Expr.Debug(b)      => emitCombinatorIr(b).map(be => s"($be).display")
+      case Ir.Expr.TokenRef(_) =>
+        Left(GenerationError(Ast.DUMMY_POSITION, "token references not yet supported in combinator backend"))
+      case _: Ir.Expr.HoCall | _: Ir.Expr.ParamRef | _: Ir.Expr.Lambda =>
+        Left(GenerationError(Ast.DUMMY_POSITION, "higher-order expression in combinator backend (should have been inlined)", Some("use higher-order fallback backend")))
     }
 
-    val emittedRules = grammar.rules.foldLeft[Either[GenerationError, List[String]]](Right(Nil)) { (acc, rule) =>
-      for {
-        lines <- acc
-        body <- emitExpression(rule.body)
-      } yield lines :+ s"  lazy val ${ruleNameMap(rule.name)}: P[Any] = $body"
-    }
+    val emittedRules: Either[GenerationError, List[String]] =
+      Lowering.lower(grammar, startRule, Lowering.LowerOptions(typeCheck = false)) match {
+        case Left(d) =>
+          Left(GenerationError(d.position.getOrElse(Ast.DUMMY_POSITION), d.message, d.hint))
+        case Right(program) =>
+          program.syntactic.rules.toList.foldLeft[Either[GenerationError, List[String]]](Right(Nil)) { (acc, rule) =>
+            for { lines <- acc; body <- emitCombinatorIr(rule.body) } yield
+              lines :+ s"  lazy val ${rule.id.mangled}: P[Any] = $body"
+          }
+      }
 
     emittedRules.map { lines =>
       val packagePrefix = packageName.map(p => s"package $p\n\n").getOrElse("")
       val startRuleName = ruleNameMap(startRule)
       val ruleDefs = lines.mkString("\n")
+      val headPreamble = if (grammar.preamble.nonEmpty) grammar.preamble + "\n" else ""
       s"""${packagePrefix}import com.github.kmizu.macro_peg.combinator.MacroParsers._
          |
          |object $objectName {
-         |  private def notIn[T](p: P[T]): P[String] =
+         |$headPreamble  private def notIn[T](p: P[T]): P[String] =
          |    (!p ~ any).map { case _ ~ ch => ch }
+         |
+         |  /** Flatten nested ~ tuples / Lists / Options into a single String. */
+         |  def flatText(x: Any): String = x match {
+         |    case a ~ b          => flatText(a) + flatText(b)
+         |    case xs: List[?]    => xs.map(flatText).mkString
+         |    case Some(v)        => flatText(v)
+         |    case None           => ""
+         |    case ()             => ""
+         |    case s: String      => s
+         |    case c: Char        => c.toString
+         |    case _              => ""
+         |  }
+         |
+         |  /** Parse a Ruby integer literal text (hex/octal/binary/decimal) to BigInt. */
+         |  def parseIntLit(raw: Any): BigInt = {
+         |    val s = flatText(raw).trim.filter(_ != '_')
+         |    if      (s.startsWith("0x") || s.startsWith("0X")) BigInt(s.drop(2), 16)
+         |    else if (s.startsWith("0b") || s.startsWith("0B")) BigInt(s.drop(2), 2)
+         |    else if (s.startsWith("0o") || s.startsWith("0O")) BigInt(s.drop(2), 8)
+         |    else if (s.startsWith("0d") || s.startsWith("0D")) BigInt(s.drop(2), 10)
+         |    else if (s.length > 1 && s.startsWith("0"))        BigInt(s.drop(1), 8)
+         |    else                                                BigInt(s)
+         |  }
+         |
+         |  /** Parse a Ruby float literal text to Double. */
+         |  def parseFloatLit(raw: Any): Double = flatText(raw).trim.filter(_ != '_').toDouble
+         |
+         |  /** Flatten a left-associative ~ chain into a List (left to right). */
+         |  def flattenTilde(x: Any): List[Any] = x match {
+         |    case a ~ b => flattenTilde(a) ::: List(b)
+         |    case other => List(other)
+         |  }
+         |
+         |  /** Cast Any to RubyAst.Expr; for ~ chains (rules without semantic actions) search for Expr. */
+         |  def toExpr(x: Any): com.github.kmizu.macro_peg.ruby.RubyAst.Expr = x match {
+         |    case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr => e
+         |    case _ =>
+         |      flattenTilde(x).collectFirst { case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr => e }
+         |        .getOrElse(com.github.kmizu.macro_peg.ruby.RubyAst.StringLiteral(flatText(x).trim))
+         |  }
+         |
+         |  /** Cast Any to List[RubyAst.Expr]. */
+         |  def toExprList(xs: List[Any]): List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] =
+         |    xs.map(toExpr)
+         |
+         |  /** Cast Any to List[RubyAst.Statement]. Handles ~ chains from rules without semantic actions. */
+         |  def toStmtList(xs: Any): List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = xs match {
+         |    case list: List[?] => list.flatMap(x => toStmtList(x))
+         |    case s: com.github.kmizu.macro_peg.ruby.RubyAst.Statement => List(s)
+         |    case Some(inner) => toStmtList(inner)
+         |    case None => Nil
+         |    case a ~ (b: Option[?]) => toStmtList(a) ++ b.map(x => toStmtList(x)).getOrElse(Nil)
+         |    case a ~ (b: List[?]) => toStmtList(a) ++ b.flatMap(x => toStmtList(x))
+         |    case a ~ b =>
+         |      val bStmts = b match {
+         |        case s: com.github.kmizu.macro_peg.ruby.RubyAst.Statement => List(s)
+         |        case _ => Nil
+         |      }
+         |      toStmtList(a) ++ bStmts
+         |    case _ => Nil
+         |  }
+         |
+         |  /**
+         |   * Fold binary ops: result of `Lhs (Op Spacing Rhs)*` into a BinaryOp chain.
+         |   * Raw structure: lhs ~ List[(opToken ~ spacing ~ rhs)...] (left-associative ~ nesting).
+         |   * Each list element is a left-assoc chain ending in rhs; everything before rhs is the op text.
+         |   */
+         |  def foldBinOps(raw: Any): Any = raw match {
+         |    case lhs ~ (ops: List[?]) =>
+         |      ops.foldLeft(toExpr(lhs)) { case (acc, item) =>
+         |        val parts = flattenTilde(item)
+         |        val rhs = toExpr(parts.last)
+         |        val opText = flatText(parts.dropRight(1)).trim
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.BinaryOp(acc, opText, rhs)
+         |      }
+         |    case other => other
+         |  }
+         |
+         |  /**
+         |   * Fold right-associative power: result of `Base (Token("**") Spacing PowerExpr)?`.
+         |   * Raw structure: base ~ Option(opAndRhs).
+         |   */
+         |  def foldPowerOp(raw: Any): Any = raw match {
+         |    case base ~ Some(opAndRhs) =>
+         |      val parts = flattenTilde(opAndRhs)
+         |      val rhs = toExpr(parts.last)
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.BinaryOp(toExpr(base), "**", rhs)
+         |    case base ~ None => toExpr(base)
+         |    case other => other
+         |  }
+         |
+         |  /**
+         |   * Fold ternary: result of `Cond (Spacing "?" Spacing Then Spacing ":" !":" Spacing Else)?`.
+         |   * The optional branch is deeply nested. We flattenTilde and take positions 3 and 7
+         |   * (0-indexed: sp=0, "?"=1, sp=2, then=3, sp=4, ":"=5, sp=6, else=7).
+         |   */
+         |  def foldTernary(raw: Any): Any = raw match {
+         |    case cond ~ Some(rest) =>
+         |      val parts = flattenTilde(rest)
+         |      if (parts.length >= 8) {
+         |        val thenExpr = toExpr(parts(3))
+         |        val elseExpr = toExpr(parts(7))
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.IfExpr(
+         |          toExpr(cond),
+         |          List(com.github.kmizu.macro_peg.ruby.RubyAst.ExprStmt(thenExpr)),
+         |          List(com.github.kmizu.macro_peg.ruby.RubyAst.ExprStmt(elseExpr))
+         |        )
+         |      } else toExpr(cond)
+         |    case cond ~ None => toExpr(cond)
+         |    case other => other
+         |  }
+         |
+         |  /**
+         |   * Extract elements from comma-separated list result:
+         |   * first ~ List[(spacing ~ "," ~ spacing ~ item) ...]
+         |   */
+         |  def extractCommaSep(raw: Any): List[Any] = raw match {
+         |    case first ~ (rest: List[?]) =>
+         |      first :: rest.map { item => flattenTilde(item).last }
+         |    case single => List(single)
+         |  }
+         |
+         |  /**
+         |   * Build RangeExpr from `EqExpr (RangeOp EqExpr?)?` result.
+         |   * raw = eqExpr ~ Option(rangeOp ~ optEqExpr)
+         |   */
+         |  def foldRange(raw: Any): Any = raw match {
+         |    case start ~ Some(opAndEnd) =>
+         |      val parts = flattenTilde(opAndEnd)
+         |      val opText = flatText(parts.head).trim
+         |      val exclusive = opText == "..."
+         |      val endExpr = parts.last match {
+         |        case Some(e) => toExpr(e)
+         |        case None    => com.github.kmizu.macro_peg.ruby.RubyAst.NilLiteral()
+         |        case e       => toExpr(e)
+         |      }
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.RangeExpr(toExpr(start), endExpr, exclusive)
+         |    case start ~ None => toExpr(start)
+         |    case other => other
+         |  }
+         |
+         |  /**
+         |   * Build beginless RangeExpr from `RangeOp EqExpr` result.
+         |   * raw = rangeOp ~ eqExpr (as a ~ pair)
+         |   */
+         |  def beginlessRange(raw: Any): Any = {
+         |    val parts = flattenTilde(raw)
+         |    val opText = flatText(parts.head).trim
+         |    val exclusive = opText == "..."
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.RangeExpr(
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.NilLiteral(),
+         |      toExpr(parts.last),
+         |      exclusive
+         |    )
+         |  }
+         |
+         |  /**
+         |   * Build ArrayLiteral from Token("[") Spacing (...optional elements...)? Token("]").
+         |   * raw structure (flattenTilde): ["[", spacing, Option(first ~ rest ~ trailingComma? ~ spacing), "]"]
+         |   * Inner optional: first ~ List[(sp "," sp item)...] ~ Option(",") ~ spacing
+         |   */
+         |  def buildArrayLiteral(raw: Any): Any = {
+         |    val parts = flattenTilde(raw)
+         |    // parts = ["[", spacing, Option(inner), "]"]  (4 elements)
+         |    val innerOpt = if (parts.length >= 3) parts(2) else None
+         |    val elems: List[Any] = innerOpt match {
+         |      case Some(inner) =>
+         |        val ip = flattenTilde(inner)
+         |        // ip = [first, List[...], Option(trailing_comma), spacing]
+         |        val first = ip.head
+         |        val rest: List[Any] = ip.lift(1) match {
+         |          case Some(xs: List[?]) => xs.map { item => flattenTilde(item).last }
+         |          case _ => Nil
+         |        }
+         |        first :: rest
+         |      case None => Nil
+         |      case _ => Nil
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.ArrayLiteral(elems.map(toExpr))
+         |  }
+         |
+         |  /**
+         |   * Build Return from `Kw("return") (InlineSpacing CallArgList)?`.
+         |   * raw = "return" ~ Option(spacing ~ argList)
+         |   */
+         |  def buildReturnStmt(raw: Any): Any = raw match {
+         |    case _ ~ Some(spaceAndArgs) =>
+         |      val parts = flattenTilde(spaceAndArgs)
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.Return(Some(toExpr(parts.last)))
+         |    case _ ~ None =>
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.Return(None)
+         |    case _ =>
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.Return(None)
+         |  }
+         |
+         |  /**
+         |   * Build AssignExpr from CondExpr (CompoundAssignOp/AssignEq Spacing AssignExpr)?.
+         |   * raw = condExpr ~ Option(op ~ spacing ~ rhs)
+         |   */
+         |  def buildAssignExpr(raw: Any): Any = raw match {
+         |    case lhs ~ Some(opAndRhs) =>
+         |      val parts = flattenTilde(opAndRhs)
+         |      val op = flatText(parts.head).trim
+         |      val rhs = toExpr(parts.last)
+         |      val lhsName = lhs match {
+         |        case com.github.kmizu.macro_peg.ruby.RubyAst.LocalVar(n, _) => n
+         |        case com.github.kmizu.macro_peg.ruby.RubyAst.InstanceVar(n, _) => n
+         |        case com.github.kmizu.macro_peg.ruby.RubyAst.ClassVar(n, _) => n
+         |        case com.github.kmizu.macro_peg.ruby.RubyAst.GlobalVar(n, _) => n
+         |        case _ => flatText(lhs).trim
+         |      }
+         |      if (op == "=") {
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.AssignExpr(lhsName, rhs)
+         |      } else {
+         |        val baseOp = op.stripSuffix("=")
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.AssignExpr(
+         |          lhsName,
+         |          com.github.kmizu.macro_peg.ruby.RubyAst.BinaryOp(toExpr(lhs), baseOp, rhs)
+         |        )
+         |      }
+         |    case lhs ~ None => toExpr(lhs)
+         |    case other => other
+         |  }
+         |
+         |  /**
+         |   * Build MultiAssignStmt: MultiAssignLhs Spacing AssignEq Spacing MultiAssignRhs
+         |   * raw = ((((lhs ~ sp1) ~ eq) ~ sp2) ~ rhs)  (left-associative ~-chain)
+         |   * Uses explicit nested pattern to extract lhsResult and rhsResult intact.
+         |   */
+         |  def buildMultiAssignStmt(raw: Any): Any = {
+         |    val (lhsResult, rhsResult) = raw match {
+         |      case ((((l ~ _) ~ _) ~ _) ~ r) => (l, r)
+         |      case other => (other, other)
+         |    }
+         |    // lhsResult = MultiAssignLhs = new ~(firstLhs, List[(sep~lhs)*])
+         |    val (firstLhs, moreLhsList) = lhsResult match {
+         |      case a ~ (b: List[?]) => (a, b)
+         |      case other => (other, Nil)
+         |    }
+         |    val firstName = flatText(firstLhs).trim
+         |    val moreNames: List[String] = moreLhsList.map(item => flatText(flattenTilde(item).last).trim).filter(_.nonEmpty)
+         |    val names = (firstName :: moreNames).filter(_.nonEmpty)
+         |    // rhsResult = MultiAssignRhs = new ~(new ~(firstRhs, List[restRhs]), optComma)
+         |    val rhsInner = rhsResult match { case a ~ _ => a; case other => other }
+         |    val (firstRhsRaw, moreRhsList) = rhsInner match {
+         |      case a ~ (b: List[?]) => (a, b)
+         |      case other => (other, Nil)
+         |    }
+         |    val firstRhs = toExpr(firstRhsRaw)
+         |    val moreRhs: List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = moreRhsList.map(item => toExpr(flattenTilde(item).last))
+         |    if (names.size == 1 && moreRhs.isEmpty) {
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.AssignExpr(names.head, firstRhs)
+         |    } else {
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.MultiAssignExpr(names, com.github.kmizu.macro_peg.ruby.RubyAst.ArrayLiteral(firstRhs :: moreRhs))
+         |    }
+         |  }
+         |
+         |  def buildCommandCall(name: Any, args: Any): Any = {
+         |    val methodName = flatText(name).trim
+         |    val argList = extractArgList(args)
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.Call(None, methodName, argList)
+         |  }
+         |
+         |  def appendCommandArgsToExpr(target: com.github.kmizu.macro_peg.ruby.RubyAst.Expr, args: List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr]): com.github.kmizu.macro_peg.ruby.RubyAst.Expr = {
+         |    if (args.isEmpty) return target
+         |    target match {
+         |      case call @ com.github.kmizu.macro_peg.ruby.RubyAst.Call(receiver, methodName, existingArgs, span) =>
+         |        if (existingArgs.isEmpty) com.github.kmizu.macro_peg.ruby.RubyAst.Call(receiver, methodName, args, span)
+         |        else com.github.kmizu.macro_peg.ruby.RubyAst.Call(Some(call), "call", args)
+         |      case com.github.kmizu.macro_peg.ruby.RubyAst.LocalVar(name, span) =>
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.Call(None, name, args, span)
+         |      case com.github.kmizu.macro_peg.ruby.RubyAst.AssignExpr(lhsName, rhs, _) =>
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.AssignExpr(lhsName, appendCommandArgsToExpr(rhs, args))
+         |      case other =>
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.Call(Some(other), "call", args)
+         |    }
+         |  }
+         |
+         |  def buildExprWithCmdArgs(baseRaw: Any, tailRaw: Any): Any = {
+         |    val base = toExpr(baseRaw)
+         |    tailRaw match {
+         |      case None => base
+         |      case Some(tail) =>
+         |        val parts = flattenTilde(tail)
+         |        // parts: [(), "", CommandArgList_result, Block?_result]
+         |        // guard contributes 2 flat elements: () from AndPred and "" from NotPred
+         |        val argsPart = if (parts.length >= 3) parts(2) else null
+         |        val args = if (argsPart != null) extractArgList(argsPart) else Nil
+         |        appendCommandArgsToExpr(base, args)
+         |      case _ => base
+         |    }
+         |  }
+         |
+         |  /**
+         |   * Build a single (key, value) hash entry from HashEntryRocket or HashEntryLabel.
+         |   */
+         |  def buildHashEntry(entry: Any): (com.github.kmizu.macro_peg.ruby.RubyAst.Expr, com.github.kmizu.macro_peg.ruby.RubyAst.Expr) = {
+         |    val parts = flattenTilde(entry)
+         |    val hasRocket = parts.exists(p => flatText(p).trim == "=>")
+         |    if (hasRocket) {
+         |      (toExpr(parts.head), toExpr(parts.last))
+         |    } else {
+         |      val key: com.github.kmizu.macro_peg.ruby.RubyAst.Expr = parts.head match {
+         |        case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr => e
+         |        case raw =>
+         |          val s = flatText(raw).trim.stripSuffix(":")
+         |          com.github.kmizu.macro_peg.ruby.RubyAst.SymbolLiteral(s, com.github.kmizu.macro_peg.ruby.RubyAst.UnknownSpan)
+         |      }
+         |      (key, toExpr(parts.last))
+         |    }
+         |  }
+         |
+         |  /**
+         |   * Build HashLiteral from `Token("{") Spacing HashBody? Spacing Token("}")`.
+         |   */
+         |  def buildHashLiteral(raw: Any): Any = {
+         |    val parts = flattenTilde(raw)
+         |    // parts = ["{", spacing, Option(body), spacing, "}"]
+         |    val entries: List[(com.github.kmizu.macro_peg.ruby.RubyAst.Expr, com.github.kmizu.macro_peg.ruby.RubyAst.Expr)] =
+         |      parts.lift(2) match {
+         |        case Some(Some(body)) =>
+         |          val bp = flattenTilde(body)
+         |          val first = buildHashEntry(bp.head)
+         |          val rest: List[(com.github.kmizu.macro_peg.ruby.RubyAst.Expr, com.github.kmizu.macro_peg.ruby.RubyAst.Expr)] =
+         |            bp.lift(1) match {
+         |              case Some(xs: List[?]) => xs.map { item => buildHashEntry(flattenTilde(item).last) }
+         |              case _ => Nil
+         |            }
+         |          first :: rest
+         |        case _ => Nil
+         |      }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.HashLiteral(entries)
+         |  }
+         |
+         |  /**
+         |   * Build ArrayLiteral elements from a CallArgList result:
+         |   * first ~ List[(sp "," sp item)...] ~ Option(",")
+         |   * Handles Option wrapping for optional arg list.
+         |   */
+         |  def extractArgList(raw: Any): List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = raw match {
+         |    case Some(inner) => extractArgListInner(inner)
+         |    case None => Nil
+         |    case _ => extractArgListInner(raw)
+         |  }
+         |
+         |  def extractArgListInner(raw: Any): List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = {
+         |    val parts = flattenTilde(raw)
+         |    // Structure: first ~ List[(sp ~ "," ~ sp ~ item)...] ~ Option(trailing ",")
+         |    // But also could be just: first (no list)
+         |    parts.length match {
+         |      case 1 => List(toExpr(parts.head))
+         |      case _ =>
+         |        val first = toExpr(parts.head)
+         |        val rest: List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = parts.lift(1) match {
+         |          case Some(xs: List[?]) => xs.map { item => toExpr(flattenTilde(item).last) }
+         |          case _ => Nil
+         |        }
+         |        first :: rest
+         |    }
+         |  }
+         |
+         |  /**
+         |   * Collect BlockStatements result into List[Statement].
+         |   * BlockStatements = (Statement StatementSep)* Statement?
+         |   * raw = List[(stmt ~ sep)] ~ Option(stmt)
+         |   */
+         |  def collectStmts(raw: Any): List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = {
+         |    val parts = flattenTilde(raw)
+         |    // parts = [List[(stmt ~ sep)...], Option(lastStmt)]
+         |    val repeated: List[Any] = parts.head match {
+         |      case xs: List[?] => xs.map { item => flattenTilde(item).head }
+         |      case _ => Nil
+         |    }
+         |    val lastOpt: List[Any] = parts.lift(1) match {
+         |      case Some(Some(s)) => List(s)
+         |      case _ => Nil
+         |    }
+         |    (repeated ++ lastOpt).flatMap {
+         |      case s: com.github.kmizu.macro_peg.ruby.RubyAst.Statement => List(s)
+         |      case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr =>
+         |        List(com.github.kmizu.macro_peg.ruby.RubyAst.ExprStmt(e))
+         |      case _ => Nil
+         |    }
+         |  }
+         |
+         |  /**
+         |   * Build IfExpr from:
+         |   * Kw("if") Spacing Expr StatementSep BodyWithRescue
+         |   *   (Kw("elsif") Spacing Expr StatementSep BodyWithRescue)*
+         |   *   (Kw("else") StatementSep? BodyWithRescue)?  Kw("end")
+         |   * Flatten and pick out condition (idx 2), then body (idx 4), elsif list (idx 5), else (idx 6).
+         |   */
+         |  def buildIfExpr(cond: Any, body: Any, elsifs: Any, elseOpt: Any): Any = {
+         |    val condExpr = toExpr(cond)
+         |    val thenBody = toStmtList(body)
+         |    val elsifList: List[Any] = elsifs match {
+         |      case xs: List[?] => xs
+         |      case _ => Nil
+         |    }
+         |    val elseBody: List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = elseOpt match {
+         |      case Some(inner) =>
+         |        flattenTilde(inner).collectFirst { case stmts: List[?] => stmts }
+         |          .map(_.asInstanceOf[List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement]])
+         |          .getOrElse(toStmtList(inner))
+         |      case _ => Nil
+         |    }
+         |    val fullElse = elsifList.foldRight(elseBody) { case (elsif, acc) =>
+         |      val ep = flattenTilde(elsif)
+         |      val ec = ep.collectFirst { case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr => e }
+         |        .getOrElse(toExpr(elsif))
+         |      val eb = ep.collectFirst { case stmts: List[?] => stmts }
+         |        .map(_.asInstanceOf[List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement]])
+         |        .getOrElse(Nil)
+         |      List(com.github.kmizu.macro_peg.ruby.RubyAst.ExprStmt(
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.IfExpr(ec, eb, acc)
+         |      ))
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.IfExpr(condExpr, thenBody, fullElse)
+         |  }
+         |
+         |  def buildUnlessExpr(cond: Any, body: Any, elseOpt: Any): Any = {
+         |    val condExpr = toExpr(cond)
+         |    val thenBody = toStmtList(body)
+         |    val elseBody: List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = elseOpt match {
+         |      case Some(inner) =>
+         |        flattenTilde(inner).collectFirst { case stmts: List[?] => stmts }
+         |          .map(_.asInstanceOf[List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement]])
+         |          .getOrElse(toStmtList(inner))
+         |      case _ => Nil
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.UnlessExpr(condExpr, thenBody, elseBody)
+         |  }
+         |
+         |  def buildWhileExpr(cond: Any, body: Any): Any =
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.WhileExpr(toExpr(cond), toStmtList(body))
+         |
+         |  def buildUntilExpr(cond: Any, body: Any): Any =
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.UntilExpr(toExpr(cond), toStmtList(body))
+         |
+         |  /**
+         |   * Build Program from Spacing TopStatements !.
+         |   * TopStatements = ~(List[seps], Some(~(~(firstStmt, List[(seps~stmt)*]), List[seps])) | None)
+         |   */
+         |  def buildProgram(raw: Any): Any = {
+         |    val parts = flattenTilde(raw)
+         |    // parts(0)=Spacing, parts(1)=TopStatements, parts(2)=!.
+         |    val stmts: List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = parts.lift(1) match {
+         |      case Some(topStmtsRaw) =>
+         |        val tsParts = flattenTilde(topStmtsRaw) // [List[seps], Some(stmtChain) | None]
+         |        tsParts.lift(1) match {
+         |          case Some(Some(stmtChain)) =>
+         |            // stmtChain = ~(~(firstStmt, moreList), trailSeps)
+         |            // flattenTilde gives [...firstStmtParts..., moreList, trailSeps]
+         |            val scParts = flattenTilde(stmtChain)
+         |            // moreList is second-to-last; firstStmtParts are everything before it
+         |            val moreList: List[Any] = scParts.dropRight(1).lastOption match {
+         |              case Some(xs: List[?]) => xs
+         |              case _ => Nil
+         |            }
+         |            val firstStmtParts = scParts.dropRight(2)
+         |            val more: List[Any] = moreList.map(item => flattenTilde(item).last)
+         |            toStmtList(firstStmtParts) ++ more.flatMap(x => toStmtList(x))
+         |          case _ => Nil
+         |        }
+         |      case _ => Nil
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.Program(stmts)
+         |  }
+         |
+         |  /**
+         |   * Extract parameter names from DefParamList result.
+         |   * DefParamItem can be: "**" Identifier? | "*" Identifier? | "&" Identifier? | "..." | Identifier ...
+         |   * We do a best-effort extraction of identifier names.
+         |   */
+         |  def extractParamNames(raw: Any): List[String] = raw match {
+         |    case Some(inner) =>
+         |      val parts = flattenTilde(inner)
+         |      // parts = [first, List[(comma ~ param)...]]
+         |      val first = parts.head
+         |      val rest: List[Any] = parts.lift(1) match {
+         |        case Some(xs: List[?]) => xs.map(item => flattenTilde(item).last)
+         |        case _ => Nil
+         |      }
+         |      (first :: rest).map(flatText(_).trim).filter(_.nonEmpty)
+         |    case None => Nil
+         |    case _ => Nil
+         |  }
+         |
+         |  /**
+         |   * Build Call chain from PostfixExpr result:
+         |   * (FunctionCall / PrimaryNoCall) CallSuffix*
+         |   * raw = base ~ List[suffix]
+         |   *
+         |   * CallSuffix = DotCallSuffix / IndexSuffix / BraceBlockSuffix / DoBlockSuffix
+         |   * Each suffix is structurally distinct but we use flatText heuristics.
+         |   */
+         |  def buildPostfixExpr(raw: Any): Any = raw match {
+         |    case base ~ (suffixes: List[?]) if suffixes.nonEmpty =>
+         |      suffixes.foldLeft(toExpr(base)) { (acc, suffix) =>
+         |        val parts = flattenTilde(suffix)
+         |        val firstText = flatText(parts.head).trim
+         |        if (firstText == "[") {
+         |          // IndexSuffix: "[" spacing argList? spacing "]"
+         |          val args = parts.lift(2).map(extractArgList).getOrElse(Nil)
+         |          com.github.kmizu.macro_peg.ruby.RubyAst.Call(Some(acc), "[]", args)
+         |        } else if (firstText == "." || firstText == "::" || firstText == "&.") {
+         |          // DotCallSuffix: memberSep ~ methodName ~ argsOpt ~ blockOpt
+         |          val methodName = flatText(parts.lift(1).getOrElse("")).trim
+         |          val args: List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = parts.lift(2) match {
+         |            case Some(Some(inner)) => extractArgListInner(inner)
+         |            case _ => Nil
+         |          }
+         |          com.github.kmizu.macro_peg.ruby.RubyAst.Call(Some(acc), methodName, args)
+         |        } else {
+         |          // Block suffix or other — just return base for now
+         |          acc
+         |        }
+         |      }
+         |    case base ~ _ => toExpr(base)
+         |    case other => other
+         |  }
+         |
+         |  /**
+         |   * Build FunctionCall from `MethodIdentifier !HorizontalSpaceChar CallArgs`.
+         |   * raw = name ~ predResult ~ args
+         |   */
+         |  def buildFunctionCall(raw: Any): Any = {
+         |    val parts = flattenTilde(raw)
+         |    val name = flatText(parts.head).trim
+         |    val args: List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = parts.last match {
+         |      case Some(inner) => extractArgList(Some(inner))
+         |      case _ => extractArgList(parts.last)
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.Call(None, name, args)
+         |  }
+         |
+         |  def buildDefExpr(name: Any, params: Any, body: Any): Any = {
+         |    val defName = flatText(name).trim
+         |    val paramList = params match {
+         |      case Some(inner) => extractParamNames(Some(inner))
+         |      case _ => Nil
+         |    }
+         |    val bodyStmts: List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = body match {
+         |      case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr =>
+         |        List(com.github.kmizu.macro_peg.ruby.RubyAst.ExprStmt(e))
+         |      case s: com.github.kmizu.macro_peg.ruby.RubyAst.Statement => List(s)
+         |      case _ => toStmtList(body)
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.Def(defName, paramList, bodyStmts)
+         |  }
+         |
+         |  def buildClassExpr(nameOrReceiver: Any, body: Any): Any = {
+         |    val bodyStmts = toStmtList(body)
+         |    if (flatText(nameOrReceiver).trim.startsWith("<<")) {
+         |      val e = flattenTilde(nameOrReceiver)
+         |        .collectFirst { case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr => e }
+         |        .getOrElse(com.github.kmizu.macro_peg.ruby.RubyAst.StringLiteral(flatText(nameOrReceiver).trim))
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.SingletonClassDef(e, bodyStmts)
+         |    } else {
+         |      val name = flatText(nameOrReceiver).trim
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.ClassDef(name, bodyStmts, com.github.kmizu.macro_peg.ruby.RubyAst.UnknownSpan, None)
+         |    }
+         |  }
+         |
+         |  def buildModuleExpr(name: Any, body: Any): Any =
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.ModuleDef(flatText(name).trim, toStmtList(body))
+         |
+         |  def buildBeginExpr(body: Any): Any =
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.BeginRescue(toStmtList(body), Nil, Nil, Nil)
+         |
+         |  def buildCaseExpr(scrutineeOpt: Any, clauses: Any, elseOpt: Any): Any = {
+         |    val scrutinee: Option[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = scrutineeOpt match {
+         |      case Some(inner) => Some(toExpr(inner))
+         |      case _ => None
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.CaseExpr(scrutinee, Nil, Nil)
+         |  }
+         |
+         |  def buildForExpr(vars: Any, iter: Any, body: Any): Any =
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.ForIn(
+         |      flatText(vars).trim, toExpr(iter), toStmtList(body)
+         |    )
+         |
          |
          |$ruleDefs
          |
@@ -540,6 +1173,699 @@ object ParserGenerator {
          |  def parseAll(input: String): Either[String, Any] =
          |    com.github.kmizu.macro_peg.combinator.MacroParsers.parseAll(refer($startRuleName), input)
          |      .left.map(f => com.github.kmizu.macro_peg.combinator.MacroParsers.formatFailure(input, f))
+         |}
+         |""".stripMargin
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Recursive-Descent backend: generates plain Scala code, no library deps
+  // ---------------------------------------------------------------------------
+  private def generateRecursiveDescentBackend(
+    grammar: Grammar,
+    objectName: String,
+    packageName: Option[String],
+    startRule: Symbol
+  ): Either[GenerationError, String] = {
+    val ruleNameMap  = buildRuleNameMap(grammar.rules)
+
+    var freshCount = 0
+    def fresh(prefix: String = "x"): String = { freshCount += 1; s"__${prefix}${freshCount}" }
+
+    // ─── IR-based emission (Pillar A) ────────────────────────────────────────
+    // All grammars (first-order AND higher-order) lower to the common IR and emit
+    // from Ir.Expr. Higher-order is handled natively via the lambda-param method
+    // (ParamRef → `__p$i()`, HoCall → `sn(thunks)`). Output is semantically stable:
+    // Sequence/Alternation are left-associative in the Parser, so flattening to
+    // N-ary IR and left-folding reproduces the same `~` nesting and choice order.
+
+    def emitIr(exp: Ir.Expr): Either[GenerationError, String] = exp match {
+      case Ir.Expr.Str("") =>
+        Right("""Some("")""")
+      case Ir.Expr.Str(target) =>
+        val esc = escapeString(target); val len = target.length
+        Right(s"""(if (input.startsWith("$esc", pos)) { pos += $len; Some("$esc") } else None)""")
+
+      case Ir.Expr.AnyChar =>
+        Right("""(if (pos < input.length) { val __wc = input.charAt(pos).toString; pos += 1; Some(__wc) } else None)""")
+
+      case Ir.Expr.Chars(positive, ranges, singles) =>
+        val rChecks = ranges.toList.map { case (f, t) => s"(__c >= ${charLiteral(f)} && __c <= ${charLiteral(t)})" }
+        val sChecks = singles.toList.sorted.map(c => s"(__c == ${charLiteral(c)})")
+        val joined  = (rChecks ++ sChecks).mkString(" || ")
+        val cond    = if (positive) s"($joined)" else s"(!($joined))"
+        Right(s"(if (pos < input.length) { val __c = input.charAt(pos); if $cond { pos += 1; Some(__c.toString) } else None } else None)")
+
+      case Ir.Expr.Seq(parts, None)         => emitSeqNoActionIr(parts)
+      case Ir.Expr.Seq(parts, Some(action)) => emitSeqActionIr(parts, action)
+      case Ir.Expr.Alt(branches)            => emitAltIr(branches)
+
+      case Ir.Expr.Rep(body, false) =>
+        val buf = fresh("buf"); val go = fresh("go"); val sv = fresh("s")
+        emitIr(body).map { bc =>
+          s"{ val $buf = scala.collection.mutable.ListBuffer[Any](); var $go = true; while ($go) { val $sv = pos; val __ri = $bc; if (__ri.isDefined) $buf += __ri.get else { pos = $sv; $go = false } }; Some($buf.toList) }"
+        }
+
+      case Ir.Expr.Rep(body, true) =>
+        val buf = fresh("buf"); val go = fresh("go"); val sv = fresh("s")
+        emitIr(body).map { bc =>
+          s"{ val __f1 = $bc; if (__f1.isDefined) { val $buf = scala.collection.mutable.ListBuffer[Any](__f1.get); var $go = true; while ($go) { val $sv = pos; val __ri = $bc; if (__ri.isDefined) $buf += __ri.get else { pos = $sv; $go = false } }; Some($buf.toList) } else None }"
+        }
+
+      case Ir.Expr.Opt(body) =>
+        val sv = fresh("s")
+        emitIr(body).map { bc =>
+          s"{ val $sv = pos; val __op = $bc; if (__op.isDefined) Some(Some(__op.get)) else { pos = $sv; Some(None) } }"
+        }
+
+      case Ir.Expr.And(body) =>
+        val sv = fresh("s")
+        emitIr(body).map { bc =>
+          s"{ val $sv = pos; val __ap = $bc; pos = $sv; if (__ap.isDefined) Some(()) else None }"
+        }
+
+      case Ir.Expr.Not(body) =>
+        val sv = fresh("s")
+        emitIr(body).map { bc =>
+          s"""{ val $sv = pos; val __np = $bc; pos = $sv; if (__np.isDefined) None else Some("") }"""
+        }
+
+      case Ir.Expr.RuleRef(id) =>
+        Right(s"${id.mangled}()")
+
+      case Ir.Expr.Cut(body) =>
+        val sv = fresh("s")
+        emitIr(body).map { bc =>
+          s"{ val $sv = pos; val __cr = $bc; if (__cr.isDefined) __cr else { pos = $sv; throw new __CommittedFailure(pos) } }"
+        }
+
+      case Ir.Expr.Debug(body) =>
+        emitIr(body)
+
+      case Ir.Expr.TokenRef(_) =>
+        Left(GenerationError(Ast.DUMMY_POSITION, "token references not yet supported in recursive-descent backend"))
+
+      case Ir.Expr.ParamRef(i, _) =>
+        Right(s"__p$i()")
+
+      case Ir.Expr.HoCall(id, args) =>
+        args.foldLeft[Either[GenerationError, List[String]]](Right(Nil)) { (acc, a) =>
+          for { l <- acc; c <- emitArgAsLambdaIr(a) } yield l :+ c
+        }.map(argList => s"${id.mangled}(${argList.mkString(", ")})")
+
+      case _: Ir.Expr.Lambda =>
+        Left(GenerationError(Ast.DUMMY_POSITION, "lambda expression not supported in recursive-descent backend"))
+    }
+
+    // N-ary sequence without action: evaluate parts left-to-right, left-fold into `~`.
+    def emitSeqNoActionIr(parts: Vector[Ir.LabeledExpr]): Either[GenerationError, String] =
+      if (parts.isEmpty) Right("""Some("")""")
+      else if (parts.size == 1) emitIr(parts.head.expr)
+      else {
+        val sv = fresh("s")
+        parts.toList.foldLeft[Either[GenerationError, List[String]]](Right(Nil)) { (acc, p) =>
+          for { l <- acc; c <- emitIr(p.expr) } yield l :+ c
+        }.map { codes =>
+          val binds = codes.map(c => (fresh("v"), c))
+          def build(rem: List[(String, String)], acc: List[String]): String = rem match {
+            case Nil =>
+              val res = acc.reduceLeft((a, b) => s"new ~($a, $b)")
+              s"Some($res)"
+            case (v, c) :: rest =>
+              s"val ${v}r = $c; if (${v}r.isDefined) { val $v = ${v}r.get; ${build(rest, acc :+ v)} } else { pos = $sv; None }"
+          }
+          s"{ val $sv = pos; ${build(binds, Nil)} }"
+        }
+      }
+
+    // N-ary sequence with trailing action: bind labeled captures as named vals.
+    def emitSeqActionIr(parts: Vector[Ir.LabeledExpr], action: Ir.ActionRef): Either[GenerationError, String] = {
+      val sv = fresh("s")
+      parts.toList.foldLeft[Either[GenerationError, List[(String, String)]]](Right(Nil)) { (acc, p) =>
+        for { l <- acc; c <- emitIr(p.expr) } yield {
+          val bindName = p.label.getOrElse(fresh("v"))
+          l :+ (bindName, c)
+        }
+      }.map { namedParts =>
+        def buildNested(rem: List[(String, String)], acc: List[String]): String = rem match {
+          case Nil =>
+            val resultExpr = acc match {
+              case Nil     => "\"\""
+              case List(v) => v
+              case vs      => vs.reduceLeft((a, b) => s"new ~($a, $b)")
+            }
+            s"val __result = $resultExpr; Some({ ${action.code} })"
+          case (bindName, code) :: rest =>
+            val rVar  = fresh("r")
+            val inner = buildNested(rest, acc :+ bindName)
+            s"val $rVar = $code; if ($rVar.isDefined) { val $bindName = $rVar.get; $inner } else { pos = $sv; None }"
+        }
+        s"{ val $sv = pos; ${buildNested(namedParts, Nil)} }"
+      }
+    }
+
+    // N-ary ordered choice: left-fold, each alternative restoring pos on failure.
+    def emitAltIr(branches: Vector[Ir.Expr]): Either[GenerationError, String] =
+      branches.toList match {
+        case Nil          => Right("None")
+        case first :: rest =>
+          rest.foldLeft(emitIr(first)) { (accE, b) =>
+            for { acc <- accE; bc <- emitIr(b) } yield {
+              val sv = fresh("s")
+              s"{ val $sv = pos; try { val __alt = $acc; if (__alt.isDefined) __alt else { pos = $sv; $bc } } catch { case __cf: __CommittedFailure => throw __cf } }"
+            }
+          }
+      }
+
+    // Emit an argument to a higher-order rule call, wrapped as () => Option[Any].
+    def emitArgAsLambdaIr(arg: Ir.Expr): Either[GenerationError, String] = arg match {
+      case Ir.Expr.ParamRef(i, _) => Right(s"__p$i")              // pass the thunk through
+      case Ir.Expr.RuleRef(id)    => Right(s"() => ${id.mangled}()")
+      case _                      => emitIr(arg).map(c => s"() => $c")
+    }
+
+    // Generate all rule methods — always via Lowering + IR (incl. higher-order).
+    val emittedRules: Either[GenerationError, List[String]] =
+      Lowering.lower(grammar, startRule, Lowering.LowerOptions(typeCheck = false)) match {
+        case Left(d) =>
+          Left(GenerationError(d.position.getOrElse(Ast.DUMMY_POSITION), d.message, d.hint))
+        case Right(program) =>
+          program.syntactic.rules.toList.foldLeft[Either[GenerationError, List[String]]](Right(Nil)) { (acc, rule) =>
+            for { lines <- acc; bodyCode <- emitIr(rule.body) } yield {
+              val paramList = rule.params.indices.map(i => s"__p$i: () => Option[Any]").mkString(", ")
+              lines :+ s"  def ${rule.id.mangled}($paramList): Option[Any] = $bodyCode"
+            }
+          }
+      }
+
+    emittedRules.map { ruleDefs =>
+      val packagePrefix  = packageName.map(p => s"package $p\n\n").getOrElse("")
+      val headPreamble   = if (grammar.preamble.nonEmpty) grammar.preamble + "\n" else ""
+      val startRuleName  = ruleNameMap(startRule)
+      val rulesText      = ruleDefs.mkString("\n\n")
+      s"""${packagePrefix}object $objectName {
+         |$headPreamble
+         |  /** Local tilde for sequential parse result pairing. */
+         |  case class ~[+A, +B](_1: A, _2: B)
+         |
+         |  /** Thrown by the cut operator ^ to prevent alternation backtracking. */
+         |  private class __CommittedFailure(val failPos: Int)
+         |    extends RuntimeException(s"committed failure at position $$failPos")
+         |
+         |  private var input: String = ""
+         |  private var pos: Int = 0
+         |
+         |  def flatText(x: Any): String = x match {
+         |    case a ~ b          => flatText(a) + flatText(b)
+         |    case xs: List[?]    => xs.map(flatText).mkString
+         |    case Some(v)        => flatText(v)
+         |    case None           => ""
+         |    case ()             => ""
+         |    case s: String      => s
+         |    case c: Char        => c.toString
+         |    case _              => ""
+         |  }
+         |
+         |  def parseIntLit(raw: Any): BigInt = {
+         |    val s = flatText(raw).trim.filter(_ != '_')
+         |    if      (s.startsWith("0x") || s.startsWith("0X")) BigInt(s.drop(2), 16)
+         |    else if (s.startsWith("0b") || s.startsWith("0B")) BigInt(s.drop(2), 2)
+         |    else if (s.startsWith("0o") || s.startsWith("0O")) BigInt(s.drop(2), 8)
+         |    else if (s.startsWith("0d") || s.startsWith("0D")) BigInt(s.drop(2), 10)
+         |    else if (s.length > 1 && s.startsWith("0"))        BigInt(s.drop(1), 8)
+         |    else                                                BigInt(s)
+         |  }
+         |
+         |  def parseFloatLit(raw: Any): Double = flatText(raw).trim.filter(_ != '_').toDouble
+         |
+         |  def flattenTilde(x: Any): List[Any] = x match {
+         |    case a ~ b => flattenTilde(a) ::: List(b)
+         |    case other => List(other)
+         |  }
+         |
+         |  def toExpr(x: Any): com.github.kmizu.macro_peg.ruby.RubyAst.Expr = x match {
+         |    case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr => e
+         |    case _ =>
+         |      flattenTilde(x).collectFirst { case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr => e }
+         |        .getOrElse(com.github.kmizu.macro_peg.ruby.RubyAst.StringLiteral(flatText(x).trim))
+         |  }
+         |
+         |  def toExprList(xs: List[Any]): List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] =
+         |    xs.map(toExpr)
+         |
+         |  def toStmtList(xs: Any): List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = xs match {
+         |    case list: List[?] => list.flatMap(x => toStmtList(x))
+         |    case s: com.github.kmizu.macro_peg.ruby.RubyAst.Statement => List(s)
+         |    case Some(inner) => toStmtList(inner)
+         |    case None => Nil
+         |    case a ~ (b: Option[?]) => toStmtList(a) ++ b.map(x => toStmtList(x)).getOrElse(Nil)
+         |    case a ~ (b: List[?]) => toStmtList(a) ++ b.flatMap(x => toStmtList(x))
+         |    case a ~ b =>
+         |      val bStmts = b match {
+         |        case s: com.github.kmizu.macro_peg.ruby.RubyAst.Statement => List(s)
+         |        case _ => Nil
+         |      }
+         |      toStmtList(a) ++ bStmts
+         |    case _ => Nil
+         |  }
+         |
+         |  def foldBinOps(raw: Any): Any = raw match {
+         |    case lhs ~ (ops: List[?]) =>
+         |      ops.foldLeft(toExpr(lhs)) { case (acc, item) =>
+         |        val parts = flattenTilde(item)
+         |        val rhs = toExpr(parts.last)
+         |        val opText = flatText(parts.dropRight(1)).trim
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.BinaryOp(acc, opText, rhs)
+         |      }
+         |    case other => other
+         |  }
+         |
+         |  def foldPowerOp(raw: Any): Any = raw match {
+         |    case base ~ Some(opAndRhs) =>
+         |      val parts = flattenTilde(opAndRhs)
+         |      val rhs = toExpr(parts.last)
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.BinaryOp(toExpr(base), "**", rhs)
+         |    case base ~ None => toExpr(base)
+         |    case other => other
+         |  }
+         |
+         |  def foldTernary(raw: Any): Any = raw match {
+         |    case cond ~ Some(rest) =>
+         |      val parts = flattenTilde(rest)
+         |      if (parts.length >= 8) {
+         |        val thenExpr = toExpr(parts(3))
+         |        val elseExpr = toExpr(parts(7))
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.IfExpr(
+         |          toExpr(cond),
+         |          List(com.github.kmizu.macro_peg.ruby.RubyAst.ExprStmt(thenExpr)),
+         |          List(com.github.kmizu.macro_peg.ruby.RubyAst.ExprStmt(elseExpr))
+         |        )
+         |      } else toExpr(cond)
+         |    case cond ~ None => toExpr(cond)
+         |    case other => other
+         |  }
+         |
+         |  def extractCommaSep(raw: Any): List[Any] = raw match {
+         |    case first ~ (rest: List[?]) =>
+         |      first :: rest.map { item => flattenTilde(item).last }
+         |    case single => List(single)
+         |  }
+         |
+         |  def foldRange(raw: Any): Any = raw match {
+         |    case start ~ Some(opAndEnd) =>
+         |      val parts = flattenTilde(opAndEnd)
+         |      val opText = flatText(parts.head).trim
+         |      val exclusive = opText == "..."
+         |      val endExpr = parts.last match {
+         |        case Some(e) => toExpr(e)
+         |        case None    => com.github.kmizu.macro_peg.ruby.RubyAst.NilLiteral()
+         |        case e       => toExpr(e)
+         |      }
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.RangeExpr(toExpr(start), endExpr, exclusive)
+         |    case start ~ None => toExpr(start)
+         |    case other => other
+         |  }
+         |
+         |  def beginlessRange(raw: Any): Any = {
+         |    val parts = flattenTilde(raw)
+         |    val opText = flatText(parts.head).trim
+         |    val exclusive = opText == "..."
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.RangeExpr(
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.NilLiteral(),
+         |      toExpr(parts.last),
+         |      exclusive
+         |    )
+         |  }
+         |
+         |  def buildArrayLiteral(raw: Any): Any = {
+         |    val parts = flattenTilde(raw)
+         |    val innerOpt = if (parts.length >= 3) parts(2) else None
+         |    val elems: List[Any] = innerOpt match {
+         |      case Some(inner) =>
+         |        val ip = flattenTilde(inner)
+         |        val first = ip.head
+         |        val rest: List[Any] = ip.lift(1) match {
+         |          case Some(xs: List[?]) => xs.map { item => flattenTilde(item).last }
+         |          case _ => Nil
+         |        }
+         |        first :: rest
+         |      case None => Nil
+         |      case _ => Nil
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.ArrayLiteral(elems.map(toExpr))
+         |  }
+         |
+         |  def buildReturnStmt(raw: Any): Any = raw match {
+         |    case _ ~ Some(spaceAndArgs) =>
+         |      val parts = flattenTilde(spaceAndArgs)
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.Return(Some(toExpr(parts.last)))
+         |    case _ ~ None =>
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.Return(None)
+         |    case _ =>
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.Return(None)
+         |  }
+         |
+         |  def buildAssignExpr(raw: Any): Any = raw match {
+         |    case lhs ~ Some(opAndRhs) =>
+         |      val parts = flattenTilde(opAndRhs)
+         |      val op = flatText(parts.head).trim
+         |      val rhs = toExpr(parts.last)
+         |      val lhsName = lhs match {
+         |        case com.github.kmizu.macro_peg.ruby.RubyAst.LocalVar(n, _) => n
+         |        case com.github.kmizu.macro_peg.ruby.RubyAst.InstanceVar(n, _) => n
+         |        case com.github.kmizu.macro_peg.ruby.RubyAst.ClassVar(n, _) => n
+         |        case com.github.kmizu.macro_peg.ruby.RubyAst.GlobalVar(n, _) => n
+         |        case _ => flatText(lhs).trim
+         |      }
+         |      if (op == "=") {
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.AssignExpr(lhsName, rhs)
+         |      } else {
+         |        val baseOp = op.stripSuffix("=")
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.AssignExpr(
+         |          lhsName,
+         |          com.github.kmizu.macro_peg.ruby.RubyAst.BinaryOp(toExpr(lhs), baseOp, rhs)
+         |        )
+         |      }
+         |    case lhs ~ None => toExpr(lhs)
+         |    case other => other
+         |  }
+         |
+         |  def buildMultiAssignStmt(raw: Any): Any = {
+         |    val (lhsResult, rhsResult) = raw match {
+         |      case ((((l ~ _) ~ _) ~ _) ~ r) => (l, r)
+         |      case other => (other, other)
+         |    }
+         |    val (firstLhs, moreLhsList) = lhsResult match {
+         |      case a ~ (b: List[?]) => (a, b)
+         |      case other => (other, Nil)
+         |    }
+         |    val firstName = flatText(firstLhs).trim
+         |    val moreNames: List[String] = moreLhsList.map(item => flatText(flattenTilde(item).last).trim).filter(_.nonEmpty)
+         |    val names = (firstName :: moreNames).filter(_.nonEmpty)
+         |    val rhsInner = rhsResult match { case a ~ _ => a; case other => other }
+         |    val (firstRhsRaw, moreRhsList) = rhsInner match {
+         |      case a ~ (b: List[?]) => (a, b)
+         |      case other => (other, Nil)
+         |    }
+         |    val firstRhs = toExpr(firstRhsRaw)
+         |    val moreRhs: List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = moreRhsList.map(item => toExpr(flattenTilde(item).last))
+         |    if (names.size == 1 && moreRhs.isEmpty) {
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.AssignExpr(names.head, firstRhs)
+         |    } else {
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.MultiAssignExpr(names, com.github.kmizu.macro_peg.ruby.RubyAst.ArrayLiteral(firstRhs :: moreRhs))
+         |    }
+         |  }
+         |
+         |  def buildCommandCall(name: Any, args: Any): Any = {
+         |    val methodName = flatText(name).trim
+         |    val argList = extractArgList(args)
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.Call(None, methodName, argList)
+         |  }
+         |
+         |  def appendCommandArgsToExpr(target: com.github.kmizu.macro_peg.ruby.RubyAst.Expr, args: List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr]): com.github.kmizu.macro_peg.ruby.RubyAst.Expr = {
+         |    if (args.isEmpty) return target
+         |    target match {
+         |      case call @ com.github.kmizu.macro_peg.ruby.RubyAst.Call(receiver, methodName, existingArgs, span) =>
+         |        if (existingArgs.isEmpty) com.github.kmizu.macro_peg.ruby.RubyAst.Call(receiver, methodName, args, span)
+         |        else com.github.kmizu.macro_peg.ruby.RubyAst.Call(Some(call), "call", args)
+         |      case com.github.kmizu.macro_peg.ruby.RubyAst.LocalVar(name, span) =>
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.Call(None, name, args, span)
+         |      case com.github.kmizu.macro_peg.ruby.RubyAst.AssignExpr(lhsName, rhs, _) =>
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.AssignExpr(lhsName, appendCommandArgsToExpr(rhs, args))
+         |      case other =>
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.Call(Some(other), "call", args)
+         |    }
+         |  }
+         |
+         |  def buildExprWithCmdArgs(baseRaw: Any, tailRaw: Any): Any = {
+         |    val base = toExpr(baseRaw)
+         |    tailRaw match {
+         |      case None => base
+         |      case Some(tail) =>
+         |        val parts = flattenTilde(tail)
+         |        // parts: [(), "", CommandArgList_result, Block?_result]
+         |        // guard contributes 2 flat elements: () from AndPred and "" from NotPred
+         |        val argsPart = if (parts.length >= 3) parts(2) else null
+         |        val args = if (argsPart != null) extractArgList(argsPart) else Nil
+         |        appendCommandArgsToExpr(base, args)
+         |      case _ => base
+         |    }
+         |  }
+         |
+         |  def buildHashEntry(entry: Any): (com.github.kmizu.macro_peg.ruby.RubyAst.Expr, com.github.kmizu.macro_peg.ruby.RubyAst.Expr) = {
+         |    val parts = flattenTilde(entry)
+         |    val hasRocket = parts.exists(p => flatText(p).trim == "=>")
+         |    if (hasRocket) {
+         |      (toExpr(parts.head), toExpr(parts.last))
+         |    } else {
+         |      val key: com.github.kmizu.macro_peg.ruby.RubyAst.Expr = parts.head match {
+         |        case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr => e
+         |        case raw =>
+         |          val s = flatText(raw).trim.stripSuffix(":")
+         |          com.github.kmizu.macro_peg.ruby.RubyAst.SymbolLiteral(s, com.github.kmizu.macro_peg.ruby.RubyAst.UnknownSpan)
+         |      }
+         |      (key, toExpr(parts.last))
+         |    }
+         |  }
+         |
+         |  def buildHashLiteral(raw: Any): Any = {
+         |    val parts = flattenTilde(raw)
+         |    val entries: List[(com.github.kmizu.macro_peg.ruby.RubyAst.Expr, com.github.kmizu.macro_peg.ruby.RubyAst.Expr)] =
+         |      parts.lift(2) match {
+         |        case Some(Some(body)) =>
+         |          val bp = flattenTilde(body)
+         |          val first = buildHashEntry(bp.head)
+         |          val rest: List[(com.github.kmizu.macro_peg.ruby.RubyAst.Expr, com.github.kmizu.macro_peg.ruby.RubyAst.Expr)] =
+         |            bp.lift(1) match {
+         |              case Some(xs: List[?]) => xs.map { item => buildHashEntry(flattenTilde(item).last) }
+         |              case _ => Nil
+         |            }
+         |          first :: rest
+         |        case _ => Nil
+         |      }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.HashLiteral(entries)
+         |  }
+         |
+         |  def extractArgList(raw: Any): List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = raw match {
+         |    case Some(inner) => extractArgListInner(inner)
+         |    case None => Nil
+         |    case _ => extractArgListInner(raw)
+         |  }
+         |
+         |  def extractArgListInner(raw: Any): List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = {
+         |    val parts = flattenTilde(raw)
+         |    parts.length match {
+         |      case 1 => List(toExpr(parts.head))
+         |      case _ =>
+         |        val first = toExpr(parts.head)
+         |        val rest: List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = parts.lift(1) match {
+         |          case Some(xs: List[?]) => xs.map { item => toExpr(flattenTilde(item).last) }
+         |          case _ => Nil
+         |        }
+         |        first :: rest
+         |    }
+         |  }
+         |
+         |  def collectStmts(raw: Any): List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = {
+         |    val parts = flattenTilde(raw)
+         |    val repeated: List[Any] = parts.head match {
+         |      case xs: List[?] => xs.map { item => flattenTilde(item).head }
+         |      case _ => Nil
+         |    }
+         |    val lastOpt: List[Any] = parts.lift(1) match {
+         |      case Some(Some(s)) => List(s)
+         |      case _ => Nil
+         |    }
+         |    (repeated ++ lastOpt).flatMap {
+         |      case s: com.github.kmizu.macro_peg.ruby.RubyAst.Statement => List(s)
+         |      case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr =>
+         |        List(com.github.kmizu.macro_peg.ruby.RubyAst.ExprStmt(e))
+         |      case _ => Nil
+         |    }
+         |  }
+         |
+         |  def buildIfExpr(cond: Any, body: Any, elsifs: Any, elseOpt: Any): Any = {
+         |    val condExpr = toExpr(cond)
+         |    val thenBody = toStmtList(body)
+         |    val elsifList: List[Any] = elsifs match {
+         |      case xs: List[?] => xs
+         |      case _ => Nil
+         |    }
+         |    val elseBody: List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = elseOpt match {
+         |      case Some(inner) =>
+         |        flattenTilde(inner).collectFirst { case stmts: List[?] => stmts }
+         |          .map(_.asInstanceOf[List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement]])
+         |          .getOrElse(toStmtList(inner))
+         |      case _ => Nil
+         |    }
+         |    val fullElse = elsifList.foldRight(elseBody) { case (elsif, acc) =>
+         |      val ep = flattenTilde(elsif)
+         |      val ec = ep.collectFirst { case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr => e }
+         |        .getOrElse(toExpr(elsif))
+         |      val eb = ep.collectFirst { case stmts: List[?] => stmts }
+         |        .map(_.asInstanceOf[List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement]])
+         |        .getOrElse(Nil)
+         |      List(com.github.kmizu.macro_peg.ruby.RubyAst.ExprStmt(
+         |        com.github.kmizu.macro_peg.ruby.RubyAst.IfExpr(ec, eb, acc)
+         |      ))
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.IfExpr(condExpr, thenBody, fullElse)
+         |  }
+         |
+         |  def buildUnlessExpr(cond: Any, body: Any, elseOpt: Any): Any = {
+         |    val condExpr = toExpr(cond)
+         |    val thenBody = toStmtList(body)
+         |    val elseBody: List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = elseOpt match {
+         |      case Some(inner) =>
+         |        flattenTilde(inner).collectFirst { case stmts: List[?] => stmts }
+         |          .map(_.asInstanceOf[List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement]])
+         |          .getOrElse(toStmtList(inner))
+         |      case _ => Nil
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.UnlessExpr(condExpr, thenBody, elseBody)
+         |  }
+         |
+         |  def buildWhileExpr(cond: Any, body: Any): Any =
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.WhileExpr(toExpr(cond), toStmtList(body))
+         |
+         |  def buildUntilExpr(cond: Any, body: Any): Any =
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.UntilExpr(toExpr(cond), toStmtList(body))
+         |
+         |  def buildProgram(raw: Any): Any = {
+         |    val parts = flattenTilde(raw)
+         |    // parts(0)=Spacing, parts(1)=TopStatements, parts(2)=!.
+         |    // TopStatements = ~(List[seps], Some(~(~(firstStmt, List[(seps~stmt)*]), List[seps])) | None)
+         |    val stmts: List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = parts.lift(1) match {
+         |      case Some(topStmtsRaw) =>
+         |        val tsParts = flattenTilde(topStmtsRaw) // [List[seps], Some(stmtChain) | None]
+         |        tsParts.lift(1) match {
+         |          case Some(Some(stmtChain)) =>
+         |            // stmtChain = ~(~(firstStmt, moreList), trailSeps)
+         |            // flattenTilde gives [...firstStmtParts..., moreList, trailSeps]
+         |            val scParts = flattenTilde(stmtChain)
+         |            // moreList is second-to-last; firstStmtParts are everything before it
+         |            val moreList: List[Any] = scParts.dropRight(1).lastOption match {
+         |              case Some(xs: List[?]) => xs
+         |              case _ => Nil
+         |            }
+         |            val firstStmtParts = scParts.dropRight(2)
+         |            val more: List[Any] = moreList.map(item => flattenTilde(item).last)
+         |            toStmtList(firstStmtParts) ++ more.flatMap(x => toStmtList(x))
+         |          case _ => Nil
+         |        }
+         |      case _ => Nil
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.Program(stmts)
+         |  }
+         |
+         |  def extractParamNames(raw: Any): List[String] = raw match {
+         |    case Some(inner) =>
+         |      val parts = flattenTilde(inner)
+         |      val first = parts.head
+         |      val rest: List[Any] = parts.lift(1) match {
+         |        case Some(xs: List[?]) => xs.map(item => flattenTilde(item).last)
+         |        case _ => Nil
+         |      }
+         |      (first :: rest).map(flatText(_).trim).filter(_.nonEmpty)
+         |    case None => Nil
+         |    case _ => Nil
+         |  }
+         |
+         |  def buildPostfixExpr(raw: Any): Any = raw match {
+         |    case base ~ (suffixes: List[?]) if suffixes.nonEmpty =>
+         |      suffixes.foldLeft(toExpr(base)) { (acc, suffix) =>
+         |        val parts = flattenTilde(suffix)
+         |        val firstText = flatText(parts.head).trim
+         |        if (firstText == "[") {
+         |          val args = parts.lift(2).map(extractArgList).getOrElse(Nil)
+         |          com.github.kmizu.macro_peg.ruby.RubyAst.Call(Some(acc), "[]", args)
+         |        } else if (firstText == "." || firstText == "::" || firstText == "&.") {
+         |          val methodName = flatText(parts.lift(1).getOrElse("")).trim
+         |          val args: List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = parts.lift(2) match {
+         |            case Some(Some(inner)) => extractArgListInner(inner)
+         |            case _ => Nil
+         |          }
+         |          com.github.kmizu.macro_peg.ruby.RubyAst.Call(Some(acc), methodName, args)
+         |        } else {
+         |          acc
+         |        }
+         |      }
+         |    case base ~ _ => toExpr(base)
+         |    case other => other
+         |  }
+         |
+         |  def buildFunctionCall(raw: Any): Any = {
+         |    val parts = flattenTilde(raw)
+         |    val name = flatText(parts.head).trim
+         |    val args: List[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = parts.last match {
+         |      case Some(inner) => extractArgList(Some(inner))
+         |      case _ => extractArgList(parts.last)
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.Call(None, name, args)
+         |  }
+         |
+         |  def buildDefExpr(name: Any, params: Any, body: Any): Any = {
+         |    val defName = flatText(name).trim
+         |    val paramList = params match {
+         |      case Some(inner) => extractParamNames(Some(inner))
+         |      case _ => Nil
+         |    }
+         |    val bodyStmts: List[com.github.kmizu.macro_peg.ruby.RubyAst.Statement] = body match {
+         |      case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr =>
+         |        List(com.github.kmizu.macro_peg.ruby.RubyAst.ExprStmt(e))
+         |      case s: com.github.kmizu.macro_peg.ruby.RubyAst.Statement => List(s)
+         |      case _ => toStmtList(body)
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.Def(defName, paramList, bodyStmts)
+         |  }
+         |
+         |  def buildClassExpr(nameOrReceiver: Any, body: Any): Any = {
+         |    val bodyStmts = toStmtList(body)
+         |    if (flatText(nameOrReceiver).trim.startsWith("<<")) {
+         |      val e = flattenTilde(nameOrReceiver)
+         |        .collectFirst { case e: com.github.kmizu.macro_peg.ruby.RubyAst.Expr => e }
+         |        .getOrElse(com.github.kmizu.macro_peg.ruby.RubyAst.StringLiteral(flatText(nameOrReceiver).trim))
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.SingletonClassDef(e, bodyStmts)
+         |    } else {
+         |      val name = flatText(nameOrReceiver).trim
+         |      com.github.kmizu.macro_peg.ruby.RubyAst.ClassDef(name, bodyStmts, com.github.kmizu.macro_peg.ruby.RubyAst.UnknownSpan, None)
+         |    }
+         |  }
+         |
+         |  def buildModuleExpr(name: Any, body: Any): Any =
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.ModuleDef(flatText(name).trim, toStmtList(body))
+         |
+         |  def buildBeginExpr(body: Any): Any =
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.BeginRescue(toStmtList(body), Nil, Nil, Nil)
+         |
+         |  def buildCaseExpr(scrutineeOpt: Any, clauses: Any, elseOpt: Any): Any = {
+         |    val scrutinee: Option[com.github.kmizu.macro_peg.ruby.RubyAst.Expr] = scrutineeOpt match {
+         |      case Some(inner) => Some(toExpr(inner))
+         |      case _ => None
+         |    }
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.CaseExpr(scrutinee, Nil, Nil)
+         |  }
+         |
+         |  def buildForExpr(vars: Any, iter: Any, body: Any): Any =
+         |    com.github.kmizu.macro_peg.ruby.RubyAst.ForIn(
+         |      flatText(vars).trim, toExpr(iter), toStmtList(body)
+         |    )
+         |
+         |$rulesText
+         |
+         |  def parse(s: String): Either[String, Any] = {
+         |    input = s; pos = 0
+         |    try {
+         |      $startRuleName() match {
+         |        case Some(v) if pos == input.length => Right(v)
+         |        case _ => Left(s"parse failed at position $$pos")
+         |      }
+         |    } catch {
+         |      case cf: __CommittedFailure => Left(s"committed parse failure at position $${cf.failPos}")
+         |    }
+         |  }
+         |
+         |  def parseAll(s: String): Either[String, Any] = parse(s)
          |}
          |""".stripMargin
     }
@@ -602,6 +1928,8 @@ object ParserGenerator {
     case Call(_, _, args) => args.nonEmpty || args.exists(containsHigherOrder)
     case Function(_, _, _) => true
     case Debug(_, b) => containsHigherOrder(b)
+    case Labeled(_, _, b) => containsHigherOrder(b)
+    case SemanticAction(_, _) => false
     case _ => false
   }
 
@@ -680,6 +2008,9 @@ object ParserGenerator {
     case ActionBlock(_, b, code) => s"(${renderExpression(b)} => { $code })"
     case LeftProject(_, l, r) => s"(${renderExpression(l)} <~ ${renderExpression(r)})"
     case RightProject(_, l, r) => s"(${renderExpression(l)} ~> ${renderExpression(r)})"
+    case Labeled(_, label, body) => s"$label:${renderExpression(body)}"
+    case Cut(_, body) => s"^ ${renderExpression(body)}"
+    case SemanticAction(_, code) => "${ " + code + " }"
   }
 
   private def renderCharClass(positive: Boolean, elems: List[CharClassElement]): String = {

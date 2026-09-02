@@ -1,0 +1,108 @@
+// Ruby Lexical Grammar (Macro PEG)
+// Uses higher-order macros for token patterns
+
+// ─── Higher-Order Token Macros ─────────────────────────────────
+
+// Token: parser followed by inline spacing (consumes trailing whitespace)
+Token(p: ?) = p InlineSpacing ;
+
+// Keyword: string + word boundary + spacing
+Kw(name: ?) = Token(name !IdentCont) ;
+
+// ─── Whitespace & Comments ─────────────────────────────────────
+
+HorizontalSpaceChar = [ \t\r] ;
+NewlineChar = "\n" ;
+LineContinuation = "\\\n" ;
+Comment = "#" (!"\n" .)* ;
+BlockComment = "=begin" (!"=end" .)* "=end" ;
+
+InlineSpacing = (HorizontalSpaceChar+ / LineContinuation / Comment / BlockComment)* ;
+Spacing = (HorizontalSpaceChar+ / NewlineChar / LineContinuation / Comment / BlockComment)* ;
+Spacing1 = (HorizontalSpaceChar / Comment / BlockComment)+ ;
+
+// ─── Character Classes ─────────────────────────────────────────
+
+IdentStart = [a-zA-Z_] ;
+IdentCont = [a-zA-Z0-9_] ;
+ConstStart = [A-Z] ;
+Digit = [0-9] ;
+HexDigit = [0-9a-fA-F] ;
+BinDigit = [01] ;
+OctDigit = [0-7] ;
+
+// ─── Identifiers ───────────────────────────────────────────────
+
+IdentifierRaw = IdentStart IdentCont* ;
+
+ReservedWord = ("begin" / "def" / "class" / "module" / "while" / "until"
+  / "for" / "in" / "case" / "when" / "if" / "elsif" / "else"
+  / "and" / "not" / "or" / "do" / "rescue" / "ensure" / "retry"
+  / "unless" / "end" / "return" / "self" / "true" / "false" / "nil"
+  / "alias") !IdentCont ;
+
+IdentifierNoSpace = !ReservedWord IdentifierRaw ;
+Identifier = Token(IdentifierNoSpace) ;
+
+// ─── Constants ─────────────────────────────────────────────────
+
+ConstNameRaw = ConstStart IdentCont* ;
+ConstName = Token(ConstNameRaw) ;
+
+// ─── Numeric Literals ──────────────────────────────────────────
+
+DigitsWithUnderscore(d: ?) = d+ ("_" d+)* ;
+
+DecimalDigits = DigitsWithUnderscore(Digit) ;
+BinaryDigits = DigitsWithUnderscore(BinDigit) ;
+OctalDigits = DigitsWithUnderscore(OctDigit) ;
+HexDigits = DigitsWithUnderscore(HexDigit) ;
+
+IntegerLiteralRaw =
+    "0" [bB] BinaryDigits
+  / "0" [oO] OctalDigits
+  / "0" [dD] DecimalDigits
+  / "0" [xX] HexDigits
+  / "0" OctalDigits
+  / DecimalDigits ;
+
+FloatExponent = [eE] ("+" / "-")? DecimalDigits ;
+FloatLiteralRaw = DecimalDigits "." DecimalDigits FloatExponent?
+  / DecimalDigits FloatExponent ;
+
+NumericSuffix = "ri" / "r" / "i" ;
+
+IntegerLiteral = Token(IntegerLiteralRaw !("." Digit) !IdentCont NumericSuffix?) ;
+FloatLiteral = Token(FloatLiteralRaw !IdentCont NumericSuffix?) ;
+
+// ─── Method Suffix Characters ──────────────────────────────────
+
+MethodSuffixChar = "?" / "!" / ("=" !"=" !">" !"~") ;
+MethodIdentifierRaw = IdentifierRaw MethodSuffixChar
+  / !ReservedWord IdentifierRaw ;
+MethodIdentifier = Token(MethodIdentifierRaw) ;
+
+// ─── Variable References ──────────────────────────────────────
+
+InstanceVarName = Token("@" !"@" IdentifierRaw) ;
+ClassVarName = Token("@@" IdentifierRaw) ;
+
+SpecialGlobalVar =
+    "$!" / "$?" / "$@" / "$&" / "$`" / "$'" / "$+" / "$~"
+  / "$/" / "$\\" / "$," / "$\"" / "$." / "$;" / "$<" / "$>"
+  / "$_" / "$0" / "$:" / "$*" ;
+
+GlobalVarName =
+    Token("$" IdentifierRaw)
+  / Token("$-" [a-zA-Z0-9_]+)
+  / Token("$" [0-9]+)
+  / Token(SpecialGlobalVar) ;
+
+// ─── Statement Separators ──────────────────────────────────────
+
+LineBreak = InlineSpacing NewlineChar InlineSpacing ;
+StatementSep = LineBreak / Token(";") ;
+
+// ─── Entry Point (for testing) ─────────────────────────────────
+
+S = Spacing (FloatLiteral / IntegerLiteral / Identifier / ConstName / NewlineChar Spacing)* !. ;

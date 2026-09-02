@@ -53,13 +53,13 @@ object RubyCorpusRunner {
   private final case class FailureInfo(path: Path, reason: String, message: String, elapsedMs: Long)
   private final case class ParseTiming(path: Path, elapsedMs: Long, status: String)
 
-  private def parseWithTimeout(input: String, timeoutMs: Int): Either[String, RubyAst.Program] = {
-    @volatile var result: Either[String, RubyAst.Program] = null
+  private def parseWithTimeout(input: String, timeoutMs: Int, parseFunc: String => Either[String, Any]): Either[String, Any] = {
+    @volatile var result: Either[String, Any] = null
     @volatile var thrown: Throwable = null
     val worker = new Thread(
       () => {
         try {
-          result = RubyParser.parse(input)
+          result = parseFunc(input)
         } catch {
           case t: Throwable =>
             thrown = t
@@ -153,6 +153,11 @@ object RubyCorpusRunner {
     }
 
     val started = System.nanoTime()
+    val backendName = sys.env.getOrElse("RUBY_CORPUS_BACKEND", "handwritten")
+    val parseFunc: String => Either[String, Any] = backendName match {
+      case "generated" => input => GeneratedRubyParser.parseAll(RubyPreprocessor.preprocess(input))
+      case _           => input => RubyParser.parse(input).map(p => p: Any)
+    }
     val timeoutMs = sys.env.get("RUBY_CORPUS_TIMEOUT_MS").flatMap(v => v.toIntOption).getOrElse(1000)
     val sampleLimit = sys.env.get("RUBY_CORPUS_FAIL_SAMPLES").flatMap(v => v.toIntOption).getOrElse(20)
     val fullError = sys.env.get("RUBY_CORPUS_FULL_ERROR").contains("1")
@@ -164,13 +169,14 @@ object RubyCorpusRunner {
     val failureOutPath = sys.env.get("RUBY_CORPUS_FAIL_OUT").map(Paths.get(_))
     val maxFiles = sys.env.get("RUBY_CORPUS_MAX_FILES").flatMap(_.toIntOption).filter(_ > 0)
     val files = maxFiles.map(allFiles.take).getOrElse(allFiles)
+    println(s"Backend: $backendName")
     maxFiles.foreach { limit =>
       println(s"RUBY_CORPUS_MAX_FILES active: using first ${files.size}/${allFiles.size} files")
     }
 
     if(warmupRounds > 0) {
       (0 until warmupRounds).foreach { _ =>
-        RubyParser.parse(warmupSource)
+        parseFunc(warmupSource)
       }
     }
 
@@ -182,7 +188,7 @@ object RubyCorpusRunner {
       try {
         val source = readRubySource(path)
         val fileStarted = System.nanoTime()
-        parseWithTimeout(source, timeoutMs) match {
+        parseWithTimeout(source, timeoutMs, parseFunc) match {
           case Right(_) =>
             success += 1
             val elapsedMs = (System.nanoTime() - fileStarted) / 1000000

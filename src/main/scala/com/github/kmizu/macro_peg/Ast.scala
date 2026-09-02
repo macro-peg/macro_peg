@@ -43,8 +43,10 @@ object Ast {
   /** %raw ruleName { scalaBody } — defines parseRuleName directly as Scala; skips grammar-gen for this rule */
   case class RawRuleDirective(ruleName: String, scalaBody: String) extends Directive
 
-  case class Grammar(pos: Position, rules: List[Rule], directives: List[Directive] = Nil) extends HasPosition {
-    def +(newRule: Rule): Grammar = Grammar(pos, rules = newRule::rules, directives)
+  /** @param directives top-level %-directives
+    * @param preamble   raw Scala code from a `head { ... }` block, emitted verbatim into the generated parser */
+  case class Grammar(pos: Position, rules: List[Rule], directives: List[Directive] = Nil, preamble: String = "") extends HasPosition {
+    def +(newRule: Rule): Grammar = Grammar(pos, rules = newRule::rules, directives, preamble)
 
     def isWellFormed: Boolean = {
       val ruleMapping = rules.map{r => r.name -> r}.toMap
@@ -63,10 +65,13 @@ object Ast {
           (env(name) || ruleNames(name)) && args.forall(a => checkDefined(a, env))
         case Identifier(_, name) => env(name) || ruleNames(name)
         case Function(_, args, body) => checkDefined(body, env ++ args.toSet)
+        case Labeled(_, _, b) => checkDefined(b, env)
+        case Cut(_, b) => checkDefined(b, env)
         case Debug(_, b) => checkDefined(b, env)
         case ActionBlock(_, b, _) => checkDefined(b, env)
         case LeftProject(_, l, r) => checkDefined(l, env) && checkDefined(r, env)
         case RightProject(_, l, r) => checkDefined(l, env) && checkDefined(r, env)
+        case SemanticAction(_, _) => true
         case _ => true
       }
       if(!rules.forall(r => checkDefined(r.body, r.args.toSet))) return false
@@ -90,6 +95,9 @@ object Ast {
         case Call(_, name, _) => if(env(name)) true else nullable.getOrElse(name, false)
         case Identifier(_, name) => if(env(name)) true else nullable.getOrElse(name, false)
         case Function(_, args, body) => exprNullable(body, env ++ args.toSet)
+        case Labeled(_, _, b) => exprNullable(b, env)
+        case Cut(_, b) => exprNullable(b, env)
+        case SemanticAction(_, _) => true
         case Debug(_, b) => exprNullable(b, env)
         case ActionBlock(_, b, _) => exprNullable(b, env)
         case LeftProject(_, l, r) => exprNullable(l, env) && exprNullable(r, env)
@@ -118,6 +126,9 @@ object Ast {
         case NotPredicate(_, b) => checkRepetition(b, env)
         case Call(_, _, args) => args.forall(a => checkRepetition(a, env))
         case Function(_, args, body) => checkRepetition(body, env ++ args.toSet)
+        case Labeled(_, _, b) => checkRepetition(b, env)
+        case Cut(_, b) => checkRepetition(b, env)
+        case SemanticAction(_, _) => true
         case Debug(_, b) => checkRepetition(b, env)
         case ActionBlock(_, b, _) => checkRepetition(b, env)
         case LeftProject(_, l, r) => checkRepetition(l, env) && checkRepetition(r, env)
@@ -147,6 +158,9 @@ object Ast {
             leadsToSelf(sym, ruleMapping(name).body, ruleMapping(name).args.toSet, visited + name)
           else false
         case Function(_, args, body) => leadsToSelf(sym, body, env ++ args.toSet, visited)
+        case Labeled(_, _, b) => leadsToSelf(sym, b, env, visited)
+        case Cut(_, b) => leadsToSelf(sym, b, env, visited)
+        case SemanticAction(_, _) => false
         case Debug(_, b) => leadsToSelf(sym, b, env, visited)
         case ActionBlock(_, b, _) => leadsToSelf(sym, b, env, visited)
         case LeftProject(_, l, r) =>
@@ -274,6 +288,20 @@ object Ast {
 
   /** Ignored expression: `e:ign` — parse e but exclude its value from the ~ tuple */
   case class IgnoredExpr(pos: Position, expr: Expression) extends Expression
+
+  /** Labeled capture: `name:expr` — binds the match result to a name for use in semantic actions. */
+  case class Labeled(pos: Position, label: String, body: Expression) extends Expression
+
+  /** Semantic action: `{ scalaCode }` — embedded Scala code that transforms captured values into AST nodes. */
+  case class SemanticAction(pos: Position, code: String) extends Expression
+
+  /** Cut operator `^`: once reached, prevents backtracking past this point in ordered choice.
+    * `A ^ B` means: parse A, then commit; if B fails, the enclosing alternation does not try
+    * further alternatives.
+    *
+    * @param pos  position in source file
+    * @param body the expression after the cut point */
+  case class Cut(pos: Position, body: Expression) extends Expression
 
   sealed abstract class Type(pos: Position)
   case class SimpleType(pos: Position) extends Type(pos)

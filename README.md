@@ -105,6 +105,40 @@ import com.github.kmizu.macro_peg.codegen.ParserGenerator
 val source = ParserGenerator.generateFromSource("""S = "a" "b";""")
 ```
 
+### Compiling a `.mapeg` file from the command line
+
+`PegCompiler` turns a grammar file into a standalone Scala source file. The generated
+parser depends only on the `macro_peg` library at runtime (the recursive-descent backend, the
+default, needs nothing but the Scala standard library).
+
+```bash
+# Object name, package and start rule come from %object / %package / %start directives
+sbt "runMain com.github.kmizu.macro_peg.codegen.PegCompiler grammar.mapeg -o Parser.scala"
+
+# ...or override them explicitly
+sbt "runMain com.github.kmizu.macro_peg.codegen.PegCompiler grammar.mapeg \
+      --object MyParser --package com.example --start Program --backend rd -o MyParser.scala"
+```
+
+Options: `-o/--out`, `--object`, `--package`, `--start`, `--backend rd|combinator`, `--quiet`.
+Compiling the full Ruby grammar (`src/main/resources/ruby.mpeg`, ~1300 lines) takes about
+two seconds end to end.
+
+To regenerate a parser as part of your own sbt build, call the generator from a source
+generator so the `.mapeg` file is the single source of truth:
+
+```scala
+Compile / sourceGenerators += Def.task {
+  import com.github.kmizu.macro_peg.codegen.{ParserGenerator, Backend}
+  val grammar = IO.read(baseDirectory.value / "src" / "main" / "mapeg" / "expr.mapeg")
+  val out = (Compile / sourceManaged).value / "ExprParser.scala"
+  ParserGenerator.generateFromSource(grammar, backend = Backend.RecursiveDescent) match {
+    case Right(code) => IO.write(out, code); Seq(out)
+    case Left(err)   => sys.error(err.toString)
+  }
+}.taskValue
+```
+
 ## Language Parsers
 
 | Language | Coverage | Approach |

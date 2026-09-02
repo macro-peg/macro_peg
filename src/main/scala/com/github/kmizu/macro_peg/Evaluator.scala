@@ -64,6 +64,9 @@ case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = Evalua
     case Ast.Function(_, _, _) => "function"
     case Ast.Debug(_, _) => "debug expression"
     case Ast.CharClass(_, _, _) => "character class"
+    case Ast.Labeled(_, label, _) => s"labeled($label)"
+    case Ast.Cut(_, _) => "cut"
+    case Ast.SemanticAction(_, _) => "semantic action"
   }
 
   private def lineColFromOffset(input: String, offset: Int): Position = {
@@ -250,6 +253,16 @@ case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = Evalua
       case Ast.Function(_, _, _) =>
         registerFailure(input, exp, ruleStack, Some("function object cannot be evaluated directly"))
         Failure
+      case Ast.Labeled(_, _, body) =>
+        // In evaluator, labels are transparent — just evaluate the body (via evaluateIn to preserve memoization)
+        evaluateIn(input, body, bindings, ruleStack)
+      case Ast.Cut(_, body) =>
+        // In evaluator, cut is transparent (committed-failure semantics are only enforced in generated code).
+        // We simply evaluate the body.
+        evaluateIn(input, body, bindings, ruleStack)
+      case Ast.SemanticAction(_, _) =>
+        // In evaluator, actions are no-ops — just succeed without consuming
+        Success(input)
     }
 
     evaluateIn(sourceInput, bodyOpt.get, FUNS, start :: Nil) match {
@@ -309,6 +322,9 @@ case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = Evalua
       Ast.Wildcard(pos)
     case ast@Ast.CharClass(_, _, _) => ast
     case ast@Ast.CharSet(_, _, _) => ast
+    case Ast.Labeled(pos, label, body) => Ast.Labeled(pos, label, extract(body, bindings))
+    case Ast.Cut(pos, body) => Ast.Cut(pos, extract(body, bindings))
+    case ast@Ast.SemanticAction(_, _) => ast
   }
 
   def evaluateWithDiagnostics(input: String, start: Symbol): Either[Diagnostic, Success] = {

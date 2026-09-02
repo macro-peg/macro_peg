@@ -25,15 +25,45 @@ object Parser {
       def <~[B](rhs: Parser[B]): Parser[A] = self << rhs
       def ~>[B](rhs: Parser[B]): Parser[B] = self >> rhs
     }
-    private def chr(c: Char): Parser[Char] = any.filter(_ == c,s"expected ${c}")
-    private def crange(f: Char, t: Char): Parser[Char] = set(f to t).map{_.charAt(0)}
-    private def cset(cs: Char*): Parser[Char] = set(cs).map{_.charAt(0)}
+    // Fast character-level primitives.
+    // scomb 0.9.0's `any`, `string` and `set` all go through `current(index)`, which is
+    // `input.substring(index)`: every single-character test copies the whole remaining input,
+    // making grammar parsing quadratic (minutes for a ~1000-line grammar). These index into
+    // `input` directly instead.
+    private def anyChar: Parser[Char] = parserOf { index =>
+      if(index >= input.length) Failure("unexpected EOF", index)
+      else Success(input.charAt(index), index + 1)
+    }
+    private def chr(c: Char): Parser[Char] = parserOf { index =>
+      if(index < input.length && input.charAt(index) == c) Success(c, index + 1)
+      else Failure(s"expected ${c}", index)
+    }
+    private def crange(f: Char, t: Char): Parser[Char] = parserOf { index =>
+      if(index < input.length) {
+        val ch = input.charAt(index)
+        if(f <= ch && ch <= t) Success(ch, index + 1) else Failure(s"expected [${f}-${t}]", index)
+      } else Failure(s"expected [${f}-${t}]", index)
+    }
+    private def cset(cs: Char*): Parser[Char] = {
+      val chars = cs.toSet
+      parserOf { index =>
+        if(index < input.length && chars(input.charAt(index))) Success(input.charAt(index), index + 1)
+        else Failure(s"expected one of ${cs.mkString("[", "", "]")}", index)
+      }
+    }
+    private def str(literal: String): Parser[String] = parserOf { index =>
+      if(input.startsWith(literal, index)) Success(literal, index + literal.length)
+      else Failure(s"expected `${literal}`", index)
+    }
     private val escape: Map[Char, Char] = Map(
       'n' -> '\n', 'r' -> '\r', 't' -> '\t', 'f' -> '\f'
     )
     def root: Parser[Grammar] = GRAMMAR
-    lazy val GRAMMAR: Parser[Grammar] = rule((loc <~ Spacing) ~ Directive.* ~ Definition.* <~ EndOfFile) ^^ {
-      case pos ~ directives ~ rules => Grammar(Position(pos.line, pos.column), rules, directives)
+    lazy val GRAMMAR: Parser[Grammar] = rule((loc <~ Spacing) ~ HeadBlock.? ~ Directive.* ~ Definition.* <~ EndOfFile) ^^ {
+      case pos ~ preambleOpt ~ directives ~ rules => Grammar(Position(pos.line, pos.column), rules, directives, preambleOpt.getOrElse(""))
+    }
+    lazy val HeadBlock: Parser[String] = rule {
+      (str("head") <~ Spacing) ~> LBRACE ~> ActionBody <~ RBRACE <~ Spacing
     }
 
     // ── Directives ──────────────────────────────────────────────────────────
@@ -41,18 +71,18 @@ object Parser {
       PercentPackage | PercentImport | PercentObject | PercentStart | PercentHelper | PercentPreprocess | PercentRaw
     )
     private def percentKeyword(kw: String): Parser[Unit] =
-      (chr('%') ~ string(kw) ~ Spacing).map(_ => ())
+      (chr('%') ~ str(kw) ~ Spacing).map(_ => ())
     lazy val PercentPackage: Parser[Ast.PackageDirective] = rule(
-      percentKeyword("package") ~> (not(chr(';')) ~> any).* <~ chr(';') <~ Spacing
+      percentKeyword("package") ~> (not(chr(';')) ~> anyChar).* <~ chr(';') <~ Spacing
     ) ^^ { cs => Ast.PackageDirective(cs.mkString.trim) }
     lazy val PercentImport: Parser[Ast.ImportDirective] = rule(
-      percentKeyword("import") ~> (not(chr(';')) ~> any).* <~ chr(';') <~ Spacing
+      percentKeyword("import") ~> (not(chr(';')) ~> anyChar).* <~ chr(';') <~ Spacing
     ) ^^ { cs => Ast.ImportDirective(cs.mkString.trim) }
     lazy val PercentObject: Parser[Ast.ObjectDirective] = rule(
-      percentKeyword("object") ~> (not(chr(';')) ~> any).* <~ chr(';') <~ Spacing
+      percentKeyword("object") ~> (not(chr(';')) ~> anyChar).* <~ chr(';') <~ Spacing
     ) ^^ { cs => Ast.ObjectDirective(cs.mkString.trim) }
     lazy val PercentStart: Parser[Ast.StartDirective] = rule(
-      percentKeyword("start") ~> (not(chr(';')) ~> any).* <~ chr(';') <~ Spacing
+      percentKeyword("start") ~> (not(chr(';')) ~> anyChar).* <~ chr(';') <~ Spacing
     ) ^^ { cs => Ast.StartDirective(Symbol(cs.mkString.trim)) }
     lazy val PercentHelper: Parser[Ast.HelperDirective] = rule(
       percentKeyword("helper") ~> ScalaBlock <~ chr(';').? <~ Spacing
@@ -75,39 +105,39 @@ object Parser {
       | ScalaLineCommentChunk
       | ScalaBlockCommentChunk
       | ScalaCharLiteralChunk
-      | (not(chr('}')) ~> any) ^^ { c => c.toString }
+      | (not(chr('}')) ~> anyChar) ^^ { c => c.toString }
     )
     lazy val ScalaNestedBlock: Parser[String] = rule(
       (chr('{') ~ ScalaBlockInner ~ chr('}')) ^^ { case _ ~ inner ~ _ => "{" + inner + "}" }
     )
     // Triple-quoted strings: """..."""  (raw""" also matched since raw is just an identifier before """)
     lazy val ScalaTripleQuoteStr: Parser[String] = rule(
-      (string("\"\"\"") ~ ScalaTripleStrContent.* ~ string("\"\"\"")) ^^ {
+      (str("\"\"\"") ~ ScalaTripleStrContent.* ~ str("\"\"\"")) ^^ {
         case _ ~ cs ~ _ => "\"\"\"" + cs.mkString + "\"\"\""
       }
     )
     lazy val ScalaTripleStrContent: Parser[String] = rule(
-      (not(string("\"\"\"")) ~> any) ^^ { c => c.toString }
+      (not(str("\"\"\"")) ~> anyChar) ^^ { c => c.toString }
     )
     lazy val ScalaDoubleQuoteStr: Parser[String] = rule(
       (chr('"') ~ ScalaStrChar.* ~ chr('"')) ^^ { case _ ~ cs ~ _ => "\"" + cs.mkString + "\"" }
     )
     lazy val ScalaStrChar: Parser[String] = rule(
-        (chr('\\') ~ any) ^^ { case _ ~ c => "\\" + c.toString }
-      | (not(chr('"')) ~> any) ^^ { _.toString }
+        (chr('\\') ~ anyChar) ^^ { case _ ~ c => "\\" + c.toString }
+      | (not(chr('"')) ~> anyChar) ^^ { _.toString }
     )
     lazy val ScalaLineCommentChunk: Parser[String] = rule(
-      (string("//") ~ (not(EndOfLine) ~> any).*) ^^ { case _ ~ cs => "//" + cs.mkString }
+      (str("//") ~ (not(EndOfLine) ~> anyChar).*) ^^ { case _ ~ cs => "//" + cs.mkString }
     )
     lazy val ScalaBlockCommentChunk: Parser[String] = rule(
-      (string("/*") ~ (not(string("*/")) ~> any).* ~ string("*/")) ^^ { case _ ~ cs ~ _ => "/*" + cs.mkString + "*/" }
+      (str("/*") ~ (not(str("*/")) ~> anyChar).* ~ str("*/")) ^^ { case _ ~ cs ~ _ => "/*" + cs.mkString + "*/" }
     )
     lazy val ScalaCharLiteralChunk: Parser[String] = rule(
       (chr('\'') ~ ScalaCharLitContent ~ chr('\'')) ^^ { case _ ~ c ~ _ => "'" + c + "'" }
     )
     lazy val ScalaCharLitContent: Parser[String] = rule(
-        (chr('\\') ~ any) ^^ { case _ ~ c => "\\" + c.toString }
-      | (not(chr('\'')) ~> any) ^^ { _.toString }
+        (chr('\\') ~ anyChar) ^^ { case _ ~ c => "\\" + c.toString }
+      | (not(chr('\'')) ~> anyChar) ^^ { _.toString }
     )
 
     // ── Annotations ─────────────────────────────────────────────────────────
@@ -115,24 +145,28 @@ object Parser {
       chr('@') ~> AnnotationBody <~ Spacing
     )
     lazy val AnnotationBody: Parser[Ast.Annotation] = rule(
-      (loc <~ string("memo"))  ^^ { p => Ast.MemoAnnotation(Position(p.line, p.column)) }
-    | (loc <~ string("cut"))   ^^ { p => Ast.CutAnnotation(Position(p.line, p.column)) }
-    | (loc <~ string("void"))  ^^ { p => Ast.VoidAnnotation(Position(p.line, p.column)) }
-    | (loc <~ string("token")) ^^ { p => Ast.TokenAnnotation(Position(p.line, p.column)) }
-    | (loc <~ string("label") <~ chr('(') <~ chr('"')) ~ (not(chr('"')) ~> any).* <~ chr('"') <~ chr(')')
+      (loc <~ str("memo"))  ^^ { p => Ast.MemoAnnotation(Position(p.line, p.column)) }
+    | (loc <~ str("cut"))   ^^ { p => Ast.CutAnnotation(Position(p.line, p.column)) }
+    | (loc <~ str("void"))  ^^ { p => Ast.VoidAnnotation(Position(p.line, p.column)) }
+    | (loc <~ str("token")) ^^ { p => Ast.TokenAnnotation(Position(p.line, p.column)) }
+    | (loc <~ str("label") <~ chr('(') <~ chr('"')) ~ (not(chr('"')) ~> anyChar).* <~ chr('"') <~ chr(')')
         ^^ { case p ~ cs => Ast.LabelAnnotation(Position(p.line, p.column), cs.mkString) }
-    | (loc <~ string("guard") <~ chr('(') <~ chr('"')) ~ (not(chr('"')) ~> any).* <~ chr('"') <~ chr(')')
+    | (loc <~ str("guard") <~ chr('(') <~ chr('"')) ~ (not(chr('"')) ~> anyChar).* <~ chr('"') <~ chr(')')
         ^^ { case p ~ cs => Ast.GuardAnnotation(Position(p.line, p.column), cs.mkString) }
     )
 
     lazy val Definition: Parser[Rule] =
-      rule(Annotation.* ~ Ident ~ (COLON ~> ReturnType).? ~ ((LPAREN ~> Arg.repeat1By(COMMA) <~ RPAREN).? <~ EQ) ~ (Expression <~ SEMI_COLON).commit) ^^ {
-        case anns ~ name ~ retType ~ argsOpt ~ body =>
+      rule(Annotation.* ~ Ident ~ (COLON ~> ReturnType).? ~ ((LPAREN ~> Arg.repeat1By(COMMA) <~ RPAREN).? <~ EQ) ~ (Expression ~ ActionBlock.? <~ SEMI_COLON).commit) ^^ {
+        case anns ~ name ~ retType ~ argsOpt ~ (body ~ actionOpt) =>
           val argsWithTypes = argsOpt.getOrElse(List())
+          val finalBody = actionOpt match {
+            case Some(action) => Sequence(body.pos, body, action)
+            case None => body
+          }
           Rule(
             name.pos,
             name.name,
-            body,
+            finalBody,
             argsWithTypes.map(_._1.name),
             argsWithTypes.map(_._2),
             retType,
@@ -141,7 +175,7 @@ object Parser {
       }
 
     lazy val ReturnType: Parser[String] = rule(
-      (not(chr('=')) ~> any).+ ^^ { cs => cs.mkString.trim }
+      (not(chr('=')) ~> anyChar).+ ^^ { cs => cs.mkString.trim }
     )
 
     lazy val Arg: Parser[(Identifier, Option[Type])] = rule(Ident ~ (COLON ~> TypeTree).?) ^^ { case id ~ tpe => (id, tpe)}
@@ -163,18 +197,31 @@ object Parser {
       val x :: xs = ns; xs.foldLeft(x){(a, y) => Alternation(y.pos, a, y)}
     })
 
-    // Sequencable: a chain of elements connected by implicit sequence, <~, or ~>
-    // Optionally followed by an action block: => { scalaCode }
+    // Sequencable: a chain of elements connected by implicit sequence, <~, or ~>,
+    // optionally split by the `^` cut operator, and optionally followed by
+    // an action block: => { scalaCode }
     lazy val Sequencable: Parser[Expression] = rule(
-      ProjectedSequence ~ ActionSuffix.? ^^ {
+      CutSequence ~ ActionSuffix.? ^^ {
         case body ~ None => body
-        case body ~ Some((apos, code)) => ActionBlock(apos, body, code)
+        case body ~ Some((apos, code)) => Ast.ActionBlock(apos, body, code)
+      }
+    )
+
+    // CUT_OP matches the `^` cut operator in sequence position.
+    // Note: `^` inside [...] (character class) is handled separately by CLASS; inside "..." by Literal.
+    // A bare `^` between sequence elements is the commit/cut operator.
+    lazy val CUT_OP: Parser[Unit] = chr('^') <~ Spacing ^^ { _ => () }
+    lazy val CutSequence: Parser[Expression] = rule(
+      ProjectedSequence ~ (loc ~ (CUT_OP ~> ProjectedSequence)).? ^^ {
+        case before ~ None => before
+        case before ~ Some(cutLoc ~ after) =>
+          Sequence(before.pos, before, Cut(Position(cutLoc.line, cutLoc.column), after))
       }
     )
 
     // Action block suffix: => { scalaCode }
     lazy val ActionSuffix: Parser[(Position, String)] = rule(
-      (loc <~ string("=>") <~ Spacing) ~ (ScalaBlock <~ Spacing) ^^ { case pos ~ code => (Position(pos.line, pos.column), code) }
+      (loc <~ str("=>") <~ Spacing) ~ (ScalaBlock <~ Spacing) ^^ { case pos ~ code => (Position(pos.line, pos.column), code) }
     )
 
     sealed trait ProjOp
@@ -207,12 +254,13 @@ object Parser {
       loc ~ Primary <~ QUESTION ^^ { case pos ~ e => Optional(Position(pos.line, pos.column), e) }
     | loc ~ Primary <~ STAR ^^ { case pos ~ e => Repeat0(Position(pos.line, pos.column), e) }
     | loc ~ Primary <~ PLUS ^^ { case pos ~ e => Repeat1(Position(pos.line, pos.column), e) }
-    | loc ~ Primary <~ (chr(':') ~ string("ign") ~ Spacing) ^^ { case pos ~ e => IgnoredExpr(Position(pos.line, pos.column), e) }
+    | loc ~ Primary <~ (chr(':') ~ str("ign") ~ Spacing) ^^ { case pos ~ e => IgnoredExpr(Position(pos.line, pos.column), e) }
     | Primary
     )
     lazy val Primary: Parser[Expression]    = rule(
       (loc <~ Debug) ~ (LPAREN ~> Expression <~ RPAREN) ^^ { case loc ~ body => Ast.Debug(Position(loc.line, loc.column), body)}
     | IdentifierWithoutSpace ~ (LPAREN ~> Expression.repeat0By(COMMA) <~ RPAREN) ^^ { case name ~ params => Ast.Call(Position(name.pos.line, name.pos.column), name.name, params) }
+    | LabeledExpr
     | Ident
     | CLASS
     | (OPEN ~> (Ident.repeat0By(COMMA) ~ (loc <~ ARROW) ~ Expression) <~ CLOSE) ^^ { case ids ~ loc ~ body => Function(Position(loc.line, loc.column), ids.map(_.name), body) }
@@ -220,6 +268,11 @@ object Parser {
     | loc <~ DOT ^^ { case pos => Wildcard(Position(pos.line, pos.column)) }
     | loc <~ chr('_') ^^ { case pos => StringLiteral(Position(pos.line, pos.column), "") }
     | Literal
+    )
+    lazy val LabeledExpr: Parser[Labeled] = rule(
+      IdentifierWithoutSpace ~ (chr(':') <~ Spacing) ~ Suffix ^^ {
+        case id ~ _ ~ body => Labeled(id.pos, id.name.name, body)
+      }
     )
     lazy val loc: Parser[Location] = %
     lazy val IdentifierWithoutSpace: Parser[Identifier] = rule(loc ~ IdentStart ~ IdentCont.* ^^ {
@@ -259,9 +312,27 @@ object Parser {
         case _ ~ a ~ Some(b) => Integer.parseInt("" + a + b, 8).toChar
         case _ ~ a ~ _ => Integer.parseInt("" + a, 8).toChar
       }
-    | not(META) ~> any ^^ { case c => c}
+    | not(META) ~> anyChar ^^ { case c => c}
     )
-    lazy val Debug = string("Debug") <~ Spacing
+    lazy val ActionBlock: Parser[SemanticAction] = rule {
+      loc ~ (chr('$') ~> LBRACE ~> ActionBody <~ RBRACE) <~ Spacing ^^ {
+        case pos ~ code => SemanticAction(Position(pos.line, pos.column), code)
+      }
+    }
+    lazy val ActionBody: Parser[String] = rule {
+      (ActionBodyChunk).* ^^ { case chunks => chunks.mkString }
+    }
+    lazy val ActionBodyChunk: Parser[String] = rule {
+      // Nested braces
+      chr('{') ~ ActionBody ~ chr('}') ^^ { case _ ~ inner ~ _ => "{" + inner + "}" }
+      // String literals in action body
+    | chr('"') ~ (not(chr('"')) ~> anyChar).* ~ chr('"') ^^ { case _ ~ cs ~ _ => "\"" + cs.mkString + "\"" }
+      // Any character except } and { and "
+    | (not(chr('}')) ~ not(chr('{')) ~ not(chr('"')) ~> anyChar) ^^ { case c => c.toString }
+    }
+    lazy val LBRACE = chr('{') <~ Spacing
+    lazy val RBRACE = chr('}') <~ Spacing
+    lazy val Debug = str("Debug") <~ Spacing
     lazy val LPAREN = chr('(') <~ Spacing
     lazy val RPAREN = chr(')') <~ Spacing
     lazy val LBRACKET = chr('[') <~ Spacing
@@ -285,11 +356,11 @@ object Parser {
     lazy val ARROW = chr('-') <~ chr('>') <~ Spacing
     lazy val Spacing = (Space | Comment).*
     lazy val Comment = (
-      chr('/') ~ chr('/') ~ (not(EndOfLine) ~ any).* ~ EndOfLine
+      chr('/') ~ chr('/') ~ (not(EndOfLine) ~ anyChar).* ~ EndOfLine
     )
     lazy val Space = chr(' ') | chr('\t') | EndOfLine
     lazy val EndOfLine = chr('\r') ~ chr('\n') | chr('\n') | chr('\r')
-    lazy val EndOfFile = not(any)
+    lazy val EndOfFile = not(anyChar)
   }
 
   /**
