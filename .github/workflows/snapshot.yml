@@ -37,7 +37,7 @@ jobs:
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
           PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
         run: |
-          VERSION=$(grep 'version in ThisBuild' version.sbt | sed 's/.*"\(.*\)"/\1/')
+          VERSION=$(grep 'ThisBuild / version' version.sbt | sed 's/.*"\(.*\)"/\1/')
           if [[ "$VERSION" == *-SNAPSHOT ]]; then
             sbt publishSigned
           else
