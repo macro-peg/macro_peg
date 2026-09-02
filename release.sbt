@@ -2,28 +2,26 @@ import sbtrelease._
 import ReleaseStateTransformations._
 import scala.sys.process._
 
-val sonatypeURL = "https://oss.sonatype.org/service/local/repositories/"
-
+// Rewrites the `libraryDependencies += ...` line in README.md to the version being released
+// (or the next snapshot) and commits it.
 val updateReadme: State => State = { state =>
   val extracted = Project.extract(state)
-  val scalaV = extracted get scalaBinaryVersion
-  val v = extracted get version
-  val org =  extracted get organization
-  val n = extracted get name
-  val snapshotOrRelease = if(extracted get isSnapshot) "snapshots" else "releases"
+  val v = extracted.get(version)
+  val org = extracted.get(organization)
+  val n = extracted.get(name)
+  val baseDir = extracted.get(baseDirectory)
   val readme = "README.md"
-  val readmeFile = file(readme)
-  val newReadme = Predef.augmentString(IO.read(readmeFile)).lines.map{ line =>
+  val readmeFile = baseDir / readme
+  val newReadme = IO.read(readmeFile).linesIterator.map { line =>
     val matchReleaseOrSnapshot = line.contains("SNAPSHOT") == v.contains("SNAPSHOT")
-    if(line.startsWith("libraryDependencies") && matchReleaseOrSnapshot){
+    if (line.startsWith("libraryDependencies") && matchReleaseOrSnapshot) {
       s"""libraryDependencies += "${org}" %% "${n}" % "$v""""
-    }else line
+    } else line
   }.mkString("", "\n", "\n")
   IO.write(readmeFile, newReadme)
-  val git = new Git(extracted get baseDirectory)
-  git.add(readme) ! state.log
-  git.commit("update " + readme, false, false) ! state.log
-  "git diff HEAD^" ! state.log
+  Process(Seq("git", "add", readme), baseDir) ! state.log
+  Process(Seq("git", "commit", "-m", "update " + readme), baseDir) ! state.log
+  Process(Seq("git", "diff", "HEAD^"), baseDir) ! state.log
   state
 }
 
@@ -31,6 +29,9 @@ commands += Command.command("updateReadme")(updateReadme)
 
 val updateReadmeProcess: ReleaseStep = updateReadme
 
+// Releases go to Sonatype Central through sbt 2's built-in support:
+// `publishSigned` stages into target/sona-staging (see publishTo in build.sbt),
+// then `sonaRelease` uploads the bundle to the Central Portal and releases it.
 releaseProcess := Seq[ReleaseStep](
   checkSnapshotDependencies,
   inquireVersions,
@@ -40,22 +41,12 @@ releaseProcess := Seq[ReleaseStep](
   commitReleaseVersion,
   updateReadmeProcess,
   tagRelease,
-  ReleaseStep(
-    action = { state =>
-      val extracted = Project extract state
-      extracted.runAggregated(PgpKeys.publishSigned in Global in extracted.get(thisProjectRef), state)
-    },
-    enableCrossBuild = true
-  ),
+  releaseStepCommandAndRemaining("publishSigned"),
+  releaseStepCommand("sonaRelease"),
   setNextVersion,
   commitNextVersion,
   updateReadmeProcess,
-  releaseStepCommand("sonatypeReleaseAll"),
   pushChanges
 )
 
-releaseCrossBuild := true
-
-releaseTagName := {
-  "releases/" + (version in ThisBuild).value
-}
+releaseTagName := "releases/" + (ThisBuild / version).value

@@ -1,5 +1,3 @@
-import ReleaseTransformations._
-
 organization := "com.github.kmizu"
 
 name := "macro_peg"
@@ -12,98 +10,68 @@ val scaladocBranch = settingKey[String]("branch name for scaladoc -doc-source-ur
 
 scaladocBranch := "main"
 
-scalacOptions in (Compile, doc) ++= { Seq(
+Compile / doc / scalacOptions ++= Seq(
   "-sourcepath", baseDirectory.value.getAbsolutePath,
   "-doc-source-url", s"https://github.com/kmizu/macro_peg/tree/${scaladocBranch.value}€{FILE_PATH}.scala",
-)}
+)
 
-scalacOptions ++= {
-  Seq("-unchecked", "-deprecation", "-feature", "-language:implicitConversions")
-}
+scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-language:implicitConversions")
 
 libraryDependencies ++= Seq(
   ("com.github.kmizu" %% "scomb" % "0.9.0").cross(CrossVersion.for3Use2_13),
   "org.scalatest" %% "scalatest" % "3.2.20" % Test,
   "org.scalatestplus" %% "scalacheck-1-19" % "3.2.20.0" % Test,
-  "org.scalacheck" %% "scalacheck" % "1.19.0" % "test"
+  "org.scalacheck" %% "scalacheck" % "1.19.0" % Test
 )
 
 Test / fork := true
 Test / javaOptions += "-Xss128m"
 Test / parallelExecution := false
 
-
-initialCommands in console += {
+console / initialCommands += {
   Iterator(
     "com.github.kmizu.macro_peg.combinator.MacroParsers._"
-  ).map("import "+).mkString("\n")
+  ).map("import " + _).mkString("\n")
 }
 
-pomExtra := (
-  <url>https://github.com/kmizu/macro_peg</url>
-  <licenses>
-    <license>
-      <name>The MIT License</name>
-      <url>http://www.opensource.org/licenses/MIT</url>
-      <distribution>repo</distribution>
-    </license>
-  </licenses>
-  <scm>
-    <url>git@github.com:kmizu/macro_peg.git</url>
-    <connection>scm:git:git@github.com:kmizu/macro_peg.git</connection>
-  </scm>
-  <developers>
-    <developer>
-      <id>kmizu</id>
-      <name>Kota Mizushima</name>
-      <url>https://github.com/kmizu</url>
-    </developer>
-  </developers>
-)
+// ---- POM metadata (sbt 2 builds are Scala 3, so no XML literals) ----
 
-publishTo := {
-  val nexus = "https://oss.sonatype.org/"
-  if (version.value.endsWith("-SNAPSHOT"))
-    Some("snapshots" at nexus+"content/repositories/snapshots")
-  else
-    Some("releases" at nexus+"service/local/staging/deploy/maven2")
+homepage := Some(url("https://github.com/kmizu/macro_peg"))
+licenses := Seq("MIT" -> url("http://www.opensource.org/licenses/MIT"))
+scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/kmizu/macro_peg"),
+    "scm:git:git@github.com:kmizu/macro_peg.git"
+  )
+)
+developers := List(
+  Developer("kmizu", "Kota Mizushima", "", url("https://github.com/kmizu"))
+)
+pomIncludeRepository := (_ => false)
+
+// ---- Publishing via Sonatype Central (built into sbt 2; no sbt-sonatype needed) ----
+//
+// Releases:  `publishSigned` stages into target/sona-staging, then `sonaRelease` uploads
+//            the bundle to the Central Portal and releases it.
+// Snapshots: `publishSigned` uploads directly to the Central snapshots repository.
+
+ThisBuild / publishTo := {
+  val centralSnapshots = "https://central.sonatype.com/repository/maven-snapshots/"
+  if (version.value.endsWith("-SNAPSHOT")) Some("central-snapshots" at centralSnapshots)
+  else localStaging.value
 }
 
 credentials ++= {
-  val sonatype = ("Sonatype Nexus Repository Manager", "oss.sonatype.org")
-  def loadMavenCredentials(file: java.io.File) : Seq[Credentials] = {
-    xml.XML.loadFile(file) \ "servers" \ "server" map (s => {
-      val host = (s \ "id").text
-      val realm = if (host == sonatype._2) sonatype._1 else "Unknown"
-      Credentials(realm, host, (s \ "username").text, (s \ "password").text)
-    })
-  }
-  val ivyCredentials   = Path.userHome / ".ivy2" / ".credentials"
-  val mavenCredentials = Path.userHome / ".m2"   / "settings.xml"
+  val host = "central.sonatype.com"
+  val realm = "Sonatype Central"
   val envCredentials = for {
     u <- sys.env.get("SONATYPE_USERNAME")
     p <- sys.env.get("SONATYPE_PASSWORD")
-  } yield Credentials(sonatype._1, sonatype._2, u, p)
-  envCredentials.toSeq ++ ((ivyCredentials.asFile, mavenCredentials.asFile) match {
-    case (ivy, _) if ivy.canRead => Credentials(ivy) :: Nil
-    case (_, mvn) if mvn.canRead => loadMavenCredentials(mvn)
-    case _ => Nil
-  })
+  } yield Credentials(realm, host, u, p)
+  val ivyCredentials = file(sys.props("user.home")) / ".ivy2" / ".credentials"
+  envCredentials.toSeq ++ (if (ivyCredentials.canRead) Seq(Credentials(ivyCredentials)) else Nil)
 }
 
 pgpPassphrase := sys.env.get("PGP_PASSPHRASE").map(_.toArray)
 
-releaseProcess := Seq[ReleaseStep](
-  checkSnapshotDependencies,
-  inquireVersions,
-  runClean,
-  runTest,
-  setReleaseVersion,
-  commitReleaseVersion,
-  tagRelease,
-  releaseStepCommandAndRemaining("publishSigned"),
-  releaseStepCommand("sonatypeReleaseAll"),
-  setNextVersion,
-  commitNextVersion,
-  pushChanges
-)
+// releaseProcess and the README update step live in release.sbt.
