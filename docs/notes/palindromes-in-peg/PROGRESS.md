@@ -35,6 +35,30 @@ Correct on all 32,766 binary strings up to length 14. Work per character is O(1)
 amortized on most inputs but O(n) on periodic ones ((ab)^200: 100 ops/char): recomputing
 the border structure at every mismatch is exactly what Galil's chain case avoids.
 
+## Stage 2 (done): `stage2_tm_galil.py`
+
+Tape/head machinery with unit-cost accounting, the online driver and the budgeted
+real-time driver (Galil's on-line -> real-time transformation: fixed budget per symbol,
+print 0 while lagging).  `match` + nonchain `move` only (FPP = KMP on work tapes).
+Correct online on all 8,190 strings up to length 12, but O(n) per symbol on periodic
+inputs and the real-time driver fails (predictability needs the chain case).
+
+## Stage 3 (done): `stage3_tm_galil_chain.py`
+
+Galil's places encoding; chain case via the double-palindrome search `dp(C, r)` in
+doubling stages (KMP per stage), paced at RATE = 64 units per symbol and replayed
+off-line after a `move` (main1); chain confirmation once R >= C + 4h_G, with the
+periodicity verified up to R at 4 places per symbol (right-dp), then head D watches
+each extension; case 1 (chain ends) restarts the search with r = CH_last - C;
+case 2b (chain case) moves the centre by h/2 at cost O(h).
+
+Results: online correct on all 8,190 strings up to length 12; periodic inputs cost
+5-10 units per symbol ((ab)^100: 5.7, previously 620).  **Real-time driver with
+budget 512 units per symbol: 0 mismatches on all 8,190 strings and on all periodic
+stress inputs** — the predictability condition holds empirically for this
+implementation.  The constant is large because the search replay charges
+RATE·(R-C) against a centre move of (R-C)/4; it does not matter for the PEG.
+
 ## Earlier core: `online_manacher.py`
 
 Position-based online Manacher with the invariant that finalized centres are recorded in
