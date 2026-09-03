@@ -63,7 +63,7 @@ ThisBuild / publishTo := {
 
 credentials ++= {
   val host = "central.sonatype.com"
-  val realm = "Sonatype Central"
+  val realm = "Sonatype Nexus Repository Manager" // realm announced by central.sonatype.com
   val envCredentials = for {
     u <- sys.env.get("SONATYPE_USERNAME")
     p <- sys.env.get("SONATYPE_PASSWORD")
