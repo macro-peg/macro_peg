@@ -56,6 +56,13 @@ CharacterClass<- '[' '^'? (!']' .)+ ']'
 Add the library to your `build.sbt`:
 
 ```scala
+libraryDependencies += "com.github.kmizu" %% "macro_peg" % "0.1.1"
+```
+
+Snapshots are published to the Central snapshots repository on every push to `main`:
+
+```scala
+resolvers += Resolver.sonatypeCentralSnapshots
 libraryDependencies += "com.github.kmizu" %% "macro_peg" % "0.1.2-SNAPSHOT"
 ```
 
