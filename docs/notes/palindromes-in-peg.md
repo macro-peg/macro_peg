@@ -124,6 +124,15 @@ slice of it is an explicit plain PEG. The macro parameter is exactly what buys t
 from a fixed number of rules — and, per LMR, a plain PEG can buy it too, but only by encoding a
 real-time detector.
 
+## Work in progress: towards the explicit grammar
+
+`palindromes-in-peg/online_manacher.py` is a verified algorithmic core for the real route: an
+online Manacher over positions whose finalized centres are recorded in strictly increasing
+order, so the scan at a mismatch is a backward walk along the record chain — one pointer hop per
+step, which a scaffold (hence a PEG memo table) can do. What remains is realizing the comparison
+`LE[mc] <= s` and the reflections `C - mc + LE[mc]`, `k + 2s - mc` about the active centre with
+delayed lockstep walks (Galil's tape heads), then compiling the state machine to rules.
+
 ## References
 
 * Z. Galil, *Palindrome recognition in real time by a multitape Turing machine*, JCSS 1978.
