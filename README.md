@@ -258,7 +258,7 @@ Coming soon.
 Execute the following command:
 
 ```bash
-sbt test
+sbt testFull   # `sbt test` is incremental in sbt 2 (alias for testQuick)
 ```
 
 ## License
