@@ -56,7 +56,7 @@ CharacterClass<- '[' '^'? (!']' .)+ ']'
 Add the library to your `build.sbt`:
 
 ```scala
-libraryDependencies += "com.github.kmizu" %% "macro_peg" % "0.1.1-SNAPSHOT"
+libraryDependencies += "com.github.kmizu" %% "macro_peg" % "0.1.2-SNAPSHOT"
 ```
 
 Then parse and evaluate a grammar:
