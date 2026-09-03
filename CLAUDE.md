@@ -12,8 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Compile
 sbt compile
 
-# Run all tests
-sbt test
+# Run all tests. In sbt 2 the plain `test` task is INCREMENTAL (it is an alias for
+# `testQuick`: only tests that failed before, never ran, or whose dependencies changed).
+# `testFull` is the one that always runs everything — use it in CI and before a release.
+sbt testFull
 
 # Run a single test suite
 sbt "testOnly com.github.kmizu.macro_peg.ParserSpec"

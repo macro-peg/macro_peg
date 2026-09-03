@@ -27,4 +27,4 @@ jobs:
           key: sbt-cache-${{ hashFiles('**/*.sbt') }}
           restore-keys: sbt-cache-
       - name: Test
-        run: sbt test
+        run: sbt testFull
