@@ -56,7 +56,8 @@ Results: online correct on all 8,190 strings up to length 12; periodic inputs co
 5-10 units per symbol ((ab)^100: 5.7, previously 620).  **Real-time driver with
 budget 512 units per symbol: 0 mismatches on all 8,190 strings and on all periodic
 stress inputs** — the predictability condition holds empirically for this
-implementation.  The constant is large because the search replay charges
+implementation.  Further: 0 mismatches on all 24,576 strings of length 13-14 and on
+300 random strings of length 50-300 (random / periodic / built from palindromes).  The constant is large because the search replay charges
 RATE·(R-C) against a centre move of (R-C)/4; it does not matter for the PEG.
 
 ## Earlier core: `online_manacher.py`
