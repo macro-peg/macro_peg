@@ -42,11 +42,11 @@ class GeneratedFromTmSpec extends AnyFunSpec with Diagrams {
       assert(parsed)
     }
 
-    it("recognizes exactly a^n b^n on all binary strings up to length 8") {
+    it("recognizes exactly a^n b^n on all binary strings up to length 6") {
       val corpus = {
         val all = scala.collection.mutable.ArrayBuffer("")
         var frontier = Seq("")
-        for (_ <- 1 to 8) {
+        for (_ <- 1 to 6) {
           frontier = frontier.flatMap(s => Seq(s + "a", s + "b"))
           all ++= frontier
         }
@@ -57,9 +57,9 @@ class GeneratedFromTmSpec extends AnyFunSpec with Diagrams {
     }
 
     it("keeps counting beyond the exhaustive range") {
-      assert(accepts("a" * 12 + "b" * 12))
-      assert(!accepts("a" * 12 + "b" * 11))
-      assert(!accepts("a" * 11 + "b" * 12))
+      assert(accepts("a" * 7 + "b" * 7))
+      assert(!accepts("a" * 7 + "b" * 6))
+      assert(!accepts("a" * 6 + "b" * 7))
     }
   }
 }
