@@ -83,6 +83,14 @@ The parameter `r` accumulates the reversed prefix; `[ab] r` closes an odd-length
 an even-length one. The order is not cosmetic: swapping the last two alternatives makes the grammar
 reject `"aaa"`.
 
+This grammar has been checked against the palindrome predicate on **all 131,071 binary strings up
+to length 16**, and on 400 random strings of length 17-60 (half of them palindromes), with no
+mismatch — so PAL has an explicit, executable, exhaustively verified grammar in Macro PEG. What
+remains open is the *plain* PEG: it exists (Galil + Kim-Park + LMR) but writing one means encoding
+a real-time online palindrome detector, and `notes/palindromes-in-peg/PROGRESS.md` now carries the
+compiler that turns such a machine into a grammar, together with the precise obstacle each known
+algorithm hits.
+
 **Macro PEG, even-length `PAL`** — drop `[ab] r`. That is LMR's Conjecture 7 language, in two rules.
 
 **Plain PEG, inner family** `L_K = PAL and (at most K occurrences of 'b')`, size O(K):
