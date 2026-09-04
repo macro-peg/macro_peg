@@ -238,3 +238,34 @@ Verified end to end:
 
 So: write Galil's algorithm as a legal real-time multitape TM and this compiler emits
 an explicit plain PEG for PAL.  That machine is the only remaining piece.
+
+### A palindrome language, compiled from a machine
+
+`generated/marked_palindrome_from_tm.peg` (23 rules, 3,923 tokens) is a plain PEG for
+`{ u # reverse(u) }`, compiled from a real-time one-tape machine: push `u`, turn
+around at `#`, then pop-and-compare, with the bottom cell of the stack carrying a
+marked symbol (`A`/`B`) so the machine knows within the step that the stack has just
+become empty (acceptance is by state alone).  Exact on all 2,187 strings over
+`{a,b,#}` up to length 7.  The point is not the language — a three-alternative PEG
+does it — but that the *pipeline* produces a palindrome grammar from a machine.
+
+## What is still missing for full PAL, precisely
+
+A PEG for PAL needs a machine that decides, within each step, whether the prefix read
+so far is a palindrome (the machine cannot know which step is the last).  Worst-case
+O(1) per step is not strictly necessary: an amortized-O(1) online algorithm suffices
+if it satisfies Galil's predictability condition, because the lag mechanism then never
+suppresses a `1` — which stage 3 confirmed empirically at budget 512.  So the target
+is any online palindromic-prefix algorithm implementable in this model.  Three
+candidates, each with an obstacle we have now located exactly:
+
+| algorithm | obstacle in the SCA/PEG model |
+|---|---|
+| eertree (suffix links) | needs `add[c][u]`, a child pointer written into an *existing* node; nodes are immutable, and the parent-to-child direction is the one pointers cannot take |
+| Manacher | needs `min(r[mirror], R − i)`, i.e. a comparison of two stored positions; the model has no pointer comparison, and a race costs O(radius) per step |
+| KMP over the window with pointer failure links | the cursor must move to the *successor* cell (state + 1); cells are created in increasing order, so the successor is always a newer node.  A zipper fixes that, but the failure jump then has to pop "until the top is the target", which is a comparison again; persistent snapshots remove the comparison but lose the cells created after the snapshot |
+| Galil 1978 as written | no model obstacle — but it uses FPP (Fischer–Paterson linear-time string matching on a Turing machine) as a subroutine, which is itself a substantial machine to build |
+
+So the honest state: the compiler is done and verified, and the remaining work is one
+of these machines — Galil's being the only one with no model obstacle, at the price of
+implementing FPP.  That is days of work, not hours.

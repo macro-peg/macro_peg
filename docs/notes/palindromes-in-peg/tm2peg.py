@@ -229,3 +229,43 @@ def tm_an_bn():
     states = [f'{m}{k}' for m in 'PMD' for k in (0, 1, 2, 3)]
     return TM(1, states, 'P0', {'M0', 'P0'}, delta, input_alphabet='ab',
               tape_alphabet=syms)
+
+
+def tm_marked_palindrome():
+    """{ u # reverse(u) } over {a,b}, marker '#'.  Reversal-closed, so the machine reads
+    the same shape: push u, turn around at '#', then pop-and-compare.
+
+    One tape.  The bottom cell of the stack carries a marked symbol ('A'/'B') so that
+    the machine knows, at the moment it pops it, that the stack becomes empty — the
+    acceptance test is by state alone, so this has to be known within the step.
+    Phase 'p' the head sits on the first free cell; at '#' it steps left onto the top.
+    """
+    delta = {}
+    syms = [BLANK, 'a', 'b', 'A', 'B']
+    UP = {'a': 'A', 'b': 'B'}
+    for f in syms:
+        # ---- phase p0: nothing pushed yet
+        for c in 'ab':
+            delta[('p0', (f,), c)] = ('p1', [(UP[c], 'R')])          # bottom-marked push
+        delta[('p0', (f,), '#')] = ('e', [(f, 'S')])                 # empty u: accept later
+        # ---- phase p1: pushing
+        for c in 'ab':
+            delta[('p1', (f,), c)] = ('p1', [(c, 'R')])
+        delta[('p1', (f,), '#')] = ('m', [(BLANK, 'L')])             # turn around
+        # ---- phase m: matching; the focus is the current top
+        for c in 'ab':
+            if f in ('a', 'b'):
+                delta[('m', (f,), c)] = (('m' if f == c else 'd'), [(BLANK, 'L')])
+            elif f in ('A', 'B'):
+                ok = (f == UP[c])
+                delta[('m', (f,), c)] = (('e' if ok else 'd'), [(BLANK, 'L')])
+            else:
+                delta[('m', (f,), c)] = ('d', [(f, 'S')])
+        delta[('m', (f,), '#')] = ('d', [(f, 'S')])
+        # ---- phase e: the stack is empty and everything matched; any further symbol kills
+        for c in 'ab#':
+            delta[('e', (f,), c)] = ('d', [(f, 'S')])
+        for c in 'ab#':
+            delta[('d', (f,), c)] = ('d', [(f, 'S')])
+    return TM(1, ['p0', 'p1', 'm', 'e', 'd'], 'p0', {'e'}, delta,
+              input_alphabet='ab#', tape_alphabet=syms)
