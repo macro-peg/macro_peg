@@ -39,9 +39,14 @@ class Node:
         return f'N{self.t}{self.label}'
 
 
+SELF = object()      # pointer target "the node being created" (Lean: LocalTarget.self)
+
+
 def _finite_label(label):
     if label is None:
         return True
+    if isinstance(label, dict):
+        return all(isinstance(k, str) and _finite_label(v) for k, v in label.items())
     if isinstance(label, tuple):
         return all(_finite_label(x) for x in label)
     if isinstance(label, bool):
@@ -49,7 +54,7 @@ def _finite_label(label):
     if isinstance(label, int):
         return -64 <= label <= 64
     if isinstance(label, str):
-        return len(label) <= 8          # short tags and single characters
+        return len(label) <= 16         # short tags, field names, single characters
     return False
 
 
@@ -73,7 +78,7 @@ class VM:
         self.hops += 1
         target = node.ptr.get(field)
         if target is not None:
-            assert target.t < node.t, 'pointer to a newer node'
+            assert target.t <= node.t, 'pointer to a newer node'
             self.touched.add(id(target))
         return target
 
@@ -90,10 +95,13 @@ class VM:
     def emit(self, label, **ptr):
         assert _finite_label(label), f'label not finite-shaped: {label!r}'
         for k, v in ptr.items():
-            assert v is None or v is self.top or id(v) in self.touched, \
+            assert v is None or v is SELF or v is self.top or id(v) in self.touched, \
                 f'pointer {k} -> {v} was not reached this step'
         node = Node(self.t, label, ptr)
-        self.labels.add(label)
+        for k, v in ptr.items():
+            if v is SELF:
+                ptr[k] = node
+        self.labels.add(repr(label) if isinstance(label, dict) else label)
         self.max_fields = max(self.max_fields, len(ptr))
         self.radius = max(self.radius, self.hops)
         self.top = node
