@@ -134,3 +134,6 @@ every position in Rz precedes every position in A).  Online (unbounded units per
 step): correct on all strings up to length 12.  Bugs found on the way: queue work
 must run per operation, not per step; SELF (this step's node) fields must be readable;
 the append queue must be cleared when a new KMP starts.
+Hop bound: with one unit per step, the maximum hops per step is 70–76 on inputs of
+length 100–600 (constant), 127 pointer fields per node; failure jumps advance one
+cell per unit.  So block 1 is a genuine scaffolding-automaton program.
