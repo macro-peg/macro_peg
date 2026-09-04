@@ -2,7 +2,7 @@ organization := "com.github.kmizu"
 
 name := "macro_peg"
 
-scalaVersion := "3.3.8"
+scalaVersion := "3.9.0"
 
 publishMavenStyle := true
 
