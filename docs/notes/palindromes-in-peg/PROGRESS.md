@@ -297,3 +297,22 @@ convolution-based, a different technique altogether.  The realistic route to FPP
 model is therefore a constant-space string-matching technique — Galil–Seiferas or
 Crochemore–Perrin critical factorization, whose state is O(1) positions, i.e. heads —
 rather than any failure-function algorithm.  That is the next concrete piece of work.
+
+### The way in: constant-space periods (verified)
+
+`fpp.py` now carries `maximal_suffix` / `critical_factorization` / `period_if_periodic`
+(Crochemore–Perrin).  `period_if_periodic(x)` returns the smallest period of `x` when it
+is at most `|x|/2`, and `None` otherwise; verified against brute force on **all 32,766
+binary strings up to length 14** (624 of them periodic), no mismatch.
+
+Why this matters: it uses four indices and one left-to-right scan and nothing else — no
+array, no random access — so it is directly a machine with a few heads.  And the case it
+covers, "the period is at most half the length", is exactly Galil's **chain case**, the
+one that has to be cheap.  The border chain of a periodic word is the arithmetic
+progression `n - t*p`, and what remains below `n/2` is the border chain of a word at most
+half as long, so the recursion telescopes to O(n).
+
+What is still missing for a full FPP: when the word is *not* periodic (period > n/2), its
+longest border is shorter than `n/2` and the critical factorization does not name it.
+Finding that one needs a constant-space *matching* pass (the two-way algorithm's search
+phase) rather than its preprocessing phase.  That is the next piece.
