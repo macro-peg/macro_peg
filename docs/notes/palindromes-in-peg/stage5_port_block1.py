@@ -66,12 +66,14 @@ def run(x, budget=None):
         # ---- load state -----------------------------------------------------
         if prev is None:
             mode, L, simR, cur, wj, ncell, zero = 'match', None, None, None, None, None, True
+            jt, jumping = None, False
         else:
             lab = vm.label(prev)
             mode = lab['mode']; zero = lab['zero']
             L = vm.get(prev, 'L'); simR = vm.get(prev, 'simR'); cur = vm.get(prev, 'cur')
             wj = vm.get(prev, 'wj')
             nn = vm.get(prev, 'n'); ncell = None if nn is None else Cell(nn, lab['nslot'])
+            jn = vm.get(prev, 'jt'); jt = None if jn is None else Cell(jn, lab['jtslot']); jumping = lab['jumping']
 
         # ---- cell helpers -------------------------------------------------------
         def cget(cell, field):
@@ -125,7 +127,7 @@ def run(x, budget=None):
                     continue
                 # mismatch: failure structure of the window read from simR leftwards
                 cell1 = new_cell(None, simR)              # position 1, fail(1) = 0
-                Lz.top = None; Rz.top = None; A.clear()
+                Lz.top = None; Rz.top = None; A.clear(); jumping = False; jt = None
                 spush(Lz, cell1); zero = True             # cursor at position 1, matched 0
                 if simR is L:                             # window of length 1
                     mode = 'chain'; ncell = cell1
@@ -153,15 +155,17 @@ def run(x, budget=None):
                     # failure jump: matched length s-1 -> fail(s-1); new position =
                     # fail(s-1)+1, i.e. pop Lz into Rz until the cell below the top
                     # is cell(fail(s-1)) (None -> until one cell is left, then zero)
-                    target = cfail(sbelow(Lz))
-                    while True:
-                        bel = sbelow(Lz)
-                        if bel is None:
-                            zero = True; break
-                        if bel.same(target):
-                            break
+                    # one step per unit: keep the target in `jt`, pop until reached
+                    if not jumping:
+                        jt = cfail(sbelow(Lz)); jumping = True
+                    bel = sbelow(Lz)
+                    if bel is None:
+                        zero = True; jumping = False
+                    elif bel.same(jt):
+                        jumping = False
+                    else:
                         spush(Rz, spop(Lz))
-                    continue                              # retry the compare
+                    continue                              # retry the compare next unit
                 if wj is L:
                     mode = 'chain'; ncell = newc
                 else:
@@ -191,6 +195,8 @@ def run(x, budget=None):
         b.ptr['L'] = L; b.ptr['simR'] = simR; b.ptr['cur'] = cur; b.ptr['wj'] = wj
         b.ptr['n'] = None if ncell is None else ncell.node
         b.label['nslot'] = 0 if ncell is None else ncell.slot
+        b.ptr['jt'] = None if jt is None else jt.node; b.label['jtslot'] = 0 if jt is None else jt.slot
+        b.label['jumping'] = jumping
         emit(vm, b)
         outs.append(out)
     return outs, vm.stats()
