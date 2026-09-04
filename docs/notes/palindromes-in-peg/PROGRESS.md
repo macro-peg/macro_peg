@@ -75,3 +75,28 @@ Nonchain case: FPP on [L,R]^R gives the longest initial palindrome; C moves ≥ 
 the O(k) cost via the predictability condition (dt > c ⇒ next output 0, dk ≥ dt/c − 2).
 Procedures: main(C,r), dp(C,r), right-dp, extend-the-chain (cases 1 / 2a / 2b), move
 (uses main1, the off-line replay of main until R reaches the marked RR).
+
+## Stage 4 (started): `scavm.py` — the scaffolding-automaton VM
+
+The VM enforces the SCA discipline mechanically: one node per input symbol, immutable,
+finite label + bounded pointer fields, pointers only to nodes reached this step via
+`get` (one hop each), per-step hop count (radius) and distinct-label count reported.
+`demo_extension_only` (Galil's `match` alone) runs at radius 2 with 3 labels.
+
+Port plan for `stage3_tm_galil_chain.py`, component by component:
+
+| stage-3 component | pointer-machine realization |
+|---|---|
+| input places, heads L, R | input chain with `prev`; R = top; L moves by one `prev` hop; a place = (node, half) |
+| `move`: C = midpoint of [L,R] | two backward walkers from R at speeds 2 and 1; when the fast one meets L the slow one is at C. Cost O(R−L), paid (nonchain) |
+| KMP over the window | window read backwards = forwards (palindrome). State j ↔ (node, slot): RATE states per step packed into one node's slots; `fail` = pointer to an older (node, slot) |
+| dp check "2h+1 and 4h+1 both present" | walk the fail chain and the state chain in lockstep downwards, with two state walkers at speeds 2 and 4 (Galil's two heads on marks); O(window) |
+| chain confirmation R ≥ C + 4h_G | pointer equality: L reaches the start node of the 4h_G+1 palindrome (mirror) |
+| head D (period watch) | pointer moving left with L; chain case: new L = D |
+| **new D = newL + h − 2 (moving right)** | open: needs marks revisited left-to-right ⇒ a real-time queue (Hood–Melville with unary counters as stacks), or a stack of (L,R) mirror pairs pushed during matching and walked down (cost O(R−C), only acceptable if the timing invariant tolerates it) |
+| **C after a chain step (C + h_G)** | same issue; alternative: recover C lazily from the (L,R) pair stack when a search through the new C is started |
+| replay after `move` (RATE·(R−C) units) | a walker from R back to C paces the replay: RATE units per hop |
+| lag / predictability | the delay wrapper becomes part of the machine: a pointer to the simulated-time node, output 0 while behind |
+
+The two open rows are the only places where something must move *right* over
+already-created nodes; everything else is backward walks and pointer jumps.
