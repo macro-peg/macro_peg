@@ -137,3 +137,25 @@ the append queue must be cleared when a new KMP starts.
 Hop bound: with one unit per step, the maximum hops per step is 70–76 on inputs of
 length 100–600 (constant), 127 pointer fields per node; failure jumps advance one
 cell per unit.  So block 1 is a genuine scaffolding-automaton program.
+
+### Block 2 design: the chain machinery without moving right
+
+Three operations of stage 3 move right over existing nodes; each becomes a leftward
+walk through the palindrome's mirror symmetry:
+
+1. **Head D (periodicity watch).** Galil's D oscillates over one semiperiod next to
+   C.  Read the palindrome [C−2h_G, C] (its start is known from the dp search)
+   *leftwards* from C, wrapping back to C at its start: by symmetry this is the
+   periodic sequence a_C, a_{C+1}, … that predicts each new a_R.  The phase depends
+   only on R, so the walker survives chain-case moves of C.
+2. **L after a chain-case move (L + 2h_G − 2).** Keep L virtual: the extension test
+   needs a_{L−2}, whose mirror about the old centre is a_{R − lag} with a *constant*
+   lag = k(2h_G−2) − 2 after k chain moves — a delay line (real-time queue) fed by
+   R, lengthened by h_G−1 nodes at each chain move, and a unary counter for the
+   virtual offset k(2h_G−2) − 2t that returns L to the real pointer L_old when it
+   reaches 0.
+3. **Mirror computation** when a real place is needed (KMP window at a nonchain
+   mismatch; the new centre for a coarser-chain search): mirror(p) = R_old − (p −
+   L_old), obtained by walking p→L_old and R_old→· leftwards in lockstep, cost
+   O(|W_old|), which the nonchain case pays; for the coarser-chain search it can
+   run as the first phase of the paced background search.
