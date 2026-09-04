@@ -159,3 +159,12 @@ walk through the palindrome's mirror symmetry:
    L_old), obtained by walking p→L_old and R_old→· leftwards in lockstep, cost
    O(|W_old|), which the nonchain case pays; for the coarser-chain search it can
    run as the first phase of the paced background search.
+
+### Block 2 design check (done): `stage3b_design_check.py`
+
+Stage 3 with the two replacements asserted against the originals at every step:
+the cyclic head Dc over [C−h, C] (step −2, wrap +h) agrees with D, including across
+chain-case moves (D ≡ L−2 mod h is preserved), and the mirror read a_{R−lag} with
+lag = k·h − 2 after k chain moves equals a_{L−2} whenever L is virtual (offset
+k(h−2) − 2t > 0).  All strings up to length 12 online and at real-time budget 512,
+periodic stress inputs: correct, no assertion fired.
