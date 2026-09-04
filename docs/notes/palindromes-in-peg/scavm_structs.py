@@ -72,9 +72,26 @@ class StackView:
             (below, self._cell(self.top, 'bname'), self._cell(self.top, 'bslot'))
         return v
 
-    def push(self, v):
+    def pop2(self):
+        """pop returning (node, vslot): the value may address a cell (node, slot)."""
+        vs = self._cell(self.top, 'vs')
+        return self.pop(), vs
+
+    def peek2(self):
+        return self._cell(self.top, 'val'), self._cell(self.top, 'vs')
+
+    def below_of_top(self):
+        """(node, vslot) of the cell below the top, or None if the top is alone."""
+        below = self._cell(self.top, 'below')
+        if below is None:
+            return None
+        bel = (below, self._cell(self.top, 'bname'), self._cell(self.top, 'bslot'))
+        return self._cell(bel, 'val'), self._cell(bel, 'vs')
+
+    def push(self, v, vslot=0):
         k = self.b.slot(self.name)
         self.b.ptr[f'{self.name}.{k}.val'] = v
+        self.b.label[f'{self.name}.{k}.vs'] = vslot
         if self.top is None:
             self.b.ptr[f'{self.name}.{k}.below'] = None
             self.b.label[f'{self.name}.{k}.bname'] = ''
@@ -139,25 +156,35 @@ class RTQueueView:
         self.phase = 'idle' if prev is None else vm.label(prev)[name + '.phase']
 
     # --- client operations (at most one push and one pop per step) ---------------
-    def push(self, v):
+    def push(self, v, vslot=0):
         if self.phase == 'idle':
-            self.s['B'].push(v)
+            self.s['B'].push(v, vslot)
         else:
-            self.s['B2'].push(v)
+            self.s['B2'].push(v, vslot)
         self.c.dec()
 
-    def pop(self):
+    def pop2(self):
         F = self.s['F']
         assert not F.empty(), 'pop on an empty front: real-time invariant violated'
-        v = F.pop()
+        v = F.pop2()
         self.c.dec()
         if self.phase != 'idle':
             self.m.dec()
             self._maybe_finish()
         return v
 
+    def pop(self):
+        return self.pop2()[0]
+
     def empty(self):
         return self.s['F'].empty() and self.s['B'].empty() and self.phase == 'idle'
+
+    def clear(self):
+        """forget all elements (O(1): the old chains are simply dropped)."""
+        for v in self.s.values():
+            v.top = None
+        self.m.reset(); self.c.reset()
+        self.phase = 'idle'
 
     # --- rotation ---------------------------------------------------------------
     def _start(self):
@@ -172,15 +199,15 @@ class RTQueueView:
         if self.phase == 'rev':
             progressed = False
             if not s['WB'].empty():
-                s['Br'].push(s['WB'].pop()); self.c.inc(); self.c.inc(); progressed = True
+                s['Br'].push(*s['WB'].pop2()); self.c.inc(); self.c.inc(); progressed = True
             if not s['WF'].empty():
-                s['Fr'].push(s['WF'].pop()); self.m.inc(); progressed = True
+                s['Fr'].push(*s['WF'].pop2()); self.m.inc(); progressed = True
             if not progressed:
                 self.phase = 'copy'
                 self._maybe_finish()
         elif self.phase == 'copy':
             if self.m.sign() > 0 and not s['Fr'].empty():
-                s['Br'].push(s['Fr'].pop()); self.m.dec()
+                s['Br'].push(*s['Fr'].pop2()); self.m.dec()
             self._maybe_finish()
 
     def _maybe_finish(self):

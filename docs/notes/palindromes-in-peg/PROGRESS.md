@@ -120,3 +120,17 @@ control: a pointer to the simulated-time node lags behind the top, input nodes a
 the buffer.  The rewrite replaces every integer position or KMP state by a pointer
 to a (node, slot), every array by slot cells, every comparison by pointer equality
 or a lockstep walk, and every generator local by a field of the top node.
+
+### Stage 5, block 1 (done): `stage5_port_block1.py`
+
+`match` + nonchain `move` as a scaffolding-automaton program with the lag built in:
+the input nodes go through a real-time queue Q (the simulation pops the next symbol,
+so "advancing simulated time" needs no pointer to a newer node); KMP over the
+palindromic window uses cells (node, slot) with `fail` and `wn` (window node); the
+cursor is a zipper Lz / Rz / A (left stack, right stack of cells returned by failure
+jumps, append queue) which replaces the two-head pattern tape a Turing machine would
+use (Chuang–Goldberg: multihead TM ⇔ real-time deque; here Rz ++ A suffices because
+every position in Rz precedes every position in A).  Online (unbounded units per
+step): correct on all strings up to length 12.  Bugs found on the way: queue work
+must run per operation, not per step; SELF (this step's node) fields must be readable;
+the append queue must be cleared when a new KMP starts.
