@@ -1,5 +1,28 @@
 # Towards an explicit plain PEG for PAL — progress log
 
+## NEXT SESSION: start here
+
+**One task blocks everything else**: given a palindrome `W` of length `n` whose smallest
+period is greater than `n/2`, find its longest proper border (equivalently its smallest
+period) in **O(n) machine steps** — heads, marks, finite control, tapes; no random access.
+
+* Why it is the only blocker: Galil's nonchain case needs exactly this value (the centre
+  of the largest initial palindrome of the window), and everything else is built —
+  `tm2peg.py` turns a real-time multitape machine into a plain PEG (verified on three
+  machines, one of them a palindrome language), and `period_if_periodic` already covers
+  the case `period <= n/2`, which is Galil's chain case.
+* Why the easy routes fail: KMP needs random access to `fail[]`; O(n log n) breaks the
+  predictability accounting (the centre only moves `k/4`, so the budget is O(k) with a
+  *constant*); recursing on the first half turns `W` into `Y # reverse(Y)`, which is
+  longer than `Y`, so the recursion diverges; the eertree needs a child pointer written
+  into an existing node; Manacher needs a comparison of two stored positions.
+* Where to look: Fischer & Paterson's linear-time initial-palindrome procedure (the one
+  Galil cites), or a constant-space matching technique (Galil–Seiferas, Crochemore–Perrin
+  search phase) adapted to report the longest border rather than occurrences.
+
+Once that returns a value, the machine is complete, `tm2peg.py` compiles it, and the
+result is an explicit plain PEG for PAL.
+
 Goal: an explicit plain PEG for `PAL = { w in {a,b}* | w = reverse(w) }`. Known to exist
 (Galil 1978 real-time TM + Kim–Park TM→SCA + LMR `L ∈ PEG ⟺ reverse(L) ∈ SCA`), never written.
 
