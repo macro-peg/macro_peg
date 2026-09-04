@@ -168,3 +168,38 @@ chain-case moves (D ≡ L−2 mod h is preserved), and the mirror read a_{R−la
 lag = k·h − 2 after k chain moves equals a_{L−2} whenever L is virtual (offset
 k(h−2) − 2t > 0).  All strings up to length 12 online and at real-time budget 512,
 periodic stress inputs: correct, no assertion fired.
+
+## Correction (2026-09-04): SCAs cannot compare node identities — pivot to a legal TM
+
+Re-reading `Common/Model/Scaffolding.lean`: the transition receives
+`Neighborhood radius`, a **tree of labels** (no sharing information), and an action
+names its new pointers by `LocalTarget` = a **path of directions**.  So a scaffolding
+automaton can never ask "are these two pointers the same node".  The only landmark is
+the absent pointer (start of input).
+
+That invalidates the pointer-machine port as written: `stage5_port_block1.py` and
+`scavm_pal.py` use identity in 9 places (`wj is L`, `simR is L`, cell `.same(...)`,
+place `.same(...)`).  The VM did not catch it because Python identity is invisible to
+the model.
+
+How Galil avoids it: **he writes marks on the tape** — "the r symbols left of C are
+marked", "mark semiperiods (places C−k, …)", "Mark R as RR", "the Bth place is
+marked".  A Turing head detects a landmark by *reading a marked symbol*, never by
+comparing positions.  And Kim–Park's TM→SCA compiler represents each tape as a zipper
+(two stacks), so a head move is one hop to an older node and a write is a new node
+version: no identity needed anywhere.
+
+**Consequence — the route changes.** Hand-porting to pointers was the wrong level of
+abstraction.  The correct one:
+
+1. write Galil's algorithm as a *legal* multitape TM: finite control, heads that only
+   read the scanned symbol, write it, and move ±1 — no integer places, no random
+   access (stage 3 uses `m.rd(place)`, so it is a specification, not a machine);
+2. compile TM → SCA mechanically (zippers, as in `ToSCA.lean`);
+3. compile SCA → PEG mechanically (the dictionary in `../palindromes-in-peg.md`).
+
+Steps 2 and 3 are generic and mechanical, and step 3 is what finally yields the
+grammar.  The pointer-level work is not wasted: the real-time queue, the KMP zipper
+and the mirror/cyclic-D design checks all carry over as the *implementation* of the
+tapes, and the stage-3b design check shows the chain machinery needs no rightward
+scan.  But the identity-free discipline has to come from marks on tapes.
