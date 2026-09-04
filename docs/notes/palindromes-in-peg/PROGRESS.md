@@ -100,3 +100,23 @@ Port plan for `stage3_tm_galil_chain.py`, component by component:
 
 The two open rows are the only places where something must move *right* over
 already-created nodes; everything else is backward walks and pointer jumps.
+
+### Stage 4 structures (done): `scavm_structs.py`
+
+Stacks (cells addressed as (node, creator, slot), several cells per step via slots),
+unary counters (two stacks), and a Hood–Melville real-time queue (rotation with
+immutable chains: the walkers read the old front without destroying it, so live pops
+during rotation are just a second pointer into the same chain; 3 units per step).
+Checked against `collections.deque` on random (3,000 ops) and adversarial (2,100 ops)
+sequences; radius 29, 43 fields, label count plateaus (422/593/674 at 3k/10k/30k steps).
+This closes the two "move right" rows of the plan: marks passed by R are queued.
+
+### How the port maps
+
+Every `yield` in `stage3_tm_galil_chain.py` is one unit of O(1) reads, so the
+generator maps one-to-one onto machine steps with a bounded number of units each;
+the real-time driver (budget per symbol, output 0 while lagging) *is* the machine's
+control: a pointer to the simulated-time node lags behind the top, input nodes are
+the buffer.  The rewrite replaces every integer position or KMP state by a pointer
+to a (node, slot), every array by slot cells, every comparison by pointer equality
+or a lockstep walk, and every generator local by a field of the top node.
