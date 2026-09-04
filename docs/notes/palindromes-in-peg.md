@@ -60,7 +60,11 @@ will do, which is why the naive attempts below cannot be repaired.
    `{"a" A "a", "b" A "b", "a", "b", "", a-run, b-run, "aa", "bb"}` (checked on all 1,023 strings of
    length `<= 9`) and 64,350 grammars over a richer pool with run/tail gadgets (all 4,095 strings of
    length `<= 11`). None came within 3, resp. 2, mistakes of `PAL`.
-4. **The best shape found is sound but incomplete.**
+4. **A deep randomised search finds nothing either.** 400,000 random two-rule grammars
+   over a rich atom set (rule calls, `&`/`!` predicates, runs, right-anchored gadgets,
+   mirrored pairs) were screened on 26 discriminating strings — `"aaaa"`, `"ababa"`,
+   `"aabaabaa"` among them. **Not one passed the screen**, let alone the full check.
+5. **The best shape found is sound but incomplete.**
    `A = "a" A "a" / "b" A "b" / [a]+ &("b" / !.) / [b]+ &("a" / !.) / "";` never accepts a
    non-palindrome (checked to length 13) yet misses 104 of the 381 palindromes of length `<= 13`.
    The misses are exactly the periodic ones — `"ababa"`, `"aabaabaa"`, `"abbabba"` — where several
