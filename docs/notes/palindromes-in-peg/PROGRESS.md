@@ -203,3 +203,38 @@ grammar.  The pointer-level work is not wasted: the real-time queue, the KMP zip
 and the mirror/cyclic-D design checks all carry over as the *implementation* of the
 tapes, and the stage-3b design check shows the chain machinery needs no rightward
 scan.  But the identity-free discipline has to come from marks on tapes.
+
+## The compiler works: `tm2peg.py` (real-time multitape TM -> plain PEG)
+
+The pipeline that will produce the palindrome grammar now exists and is verified.
+
+Encoding.  PEG position `i` holds the machine's configuration after it has read
+`reverse(w)` up to `w(i)`, so a rule at `i` is computed from rules at `i+1` and the
+character `w(i)`, and position `n` (recognisable by `!.`) carries the initial
+configuration; the machine accepts iff the state at position 0 is accepting, i.e.
+`S = (&(St_qf) / ...) [ab]* !.;`.  Each tape is a zipper and its two stacks are
+chains of memo positions:
+
+    unchanged    Lt_j <- . Lt_j              the value at position i+1
+    push here    Lt_j <- ""                  this position
+    pop          Lt_j <- . Lt_j . Lt_j       the cell below the top
+
+(the cell below the top of the stack at position `p` is the top of the stack at
+`p+1`), and the top cell's symbol is read as `. Lt_j Lsym_j_s`.  Rules: `St_q`
+(state), `Sc_j_s` (focus symbol), `Lt_j` / `Rt_j` (stack tops), `Lsym_j_s` /
+`Rsym_j_s` (symbol pushed here) — all predicates or forward jumps, so no position or
+identity comparison anywhere.
+
+Verified end to end:
+
+* a regular machine (even number of `a`s): 8 rules, 132 tokens, exact on all strings
+  up to length 9;
+* a real-time counter machine for `a^n b^n` (the counter is the head position, with
+  markers `$ 1 2` at the bottom cells so the focus tells the machine when the counter
+  is small): **30 rules, 6,006 tokens, exact on all 2,046 binary strings up to length
+  10 and on a^30 b^30 / a^30 b^29**.  The grammar is checked into
+  `generated/anbn_from_tm.peg` and re-verified by macro_peg's own interpreter in
+  `GeneratedFromTmSpec`.
+
+So: write Galil's algorithm as a legal real-time multitape TM and this compiler emits
+an explicit plain PEG for PAL.  That machine is the only remaining piece.
