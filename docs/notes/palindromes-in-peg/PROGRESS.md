@@ -269,3 +269,31 @@ candidates, each with an obstacle we have now located exactly:
 So the honest state: the compiler is done and verified, and the remaining work is one
 of these machines — Galil's being the only one with no model obstacle, at the price of
 implementing FPP.  That is days of work, not hours.
+
+## FPP: the reference, and why the KMP route is blocked (`fpp.py`)
+
+`fpp.py` computes all palindromic prefixes of a string as the borders of `u # reverse(u)`
+(a border of length L says `u[0..L-1] = reverse(u[0..L-1])`), verified against brute force
+on all binary strings up to length 12.  Cursor cost measured over 200 random / periodic /
+palindromic strings: 1.17 cursor moves per character, i.e. genuinely linear.
+
+Porting it to the machine model fails at a precise point.  The KMP cursor needs, at state
+`k`: the symbol `P[k+1]`, a move to `k+1` on a match, and a jump to `fail[k]` on a
+mismatch.  With pointer-carrying cells,
+
+* a **left-to-right** pass can store `fail` (its target `fail[k] < k` already exists) but
+  not `next` (the target does not exist yet);
+* a **right-to-left** pass can store `next` but not `fail`;
+* the cursor needs both **on the same cell**, and splitting into two chains only moves the
+  problem: keeping a cursor into both chains in step requires advancing in the fail chain,
+  which is the same wall;
+* a zipper gives `+1` without pointers, but then the jump must pop "until the top is the
+  target" — a pointer comparison, which the model does not have; persistent snapshots
+  remove the comparison but lose every cell created after the snapshot.
+
+In other words KMP wants **random access to `fail[]`**, a RAM operation.  That is exactly
+why Galil cites Fischer & Paterson rather than KMP: their linear-time method is
+convolution-based, a different technique altogether.  The realistic route to FPP in this
+model is therefore a constant-space string-matching technique — Galil–Seiferas or
+Crochemore–Perrin critical factorization, whose state is O(1) positions, i.e. heads —
+rather than any failure-function algorithm.  That is the next concrete piece of work.
