@@ -61,7 +61,14 @@ Galil の nonchain case が要求する値。chain case（周期 ≤ n/2）は `
 
 ### 3b. まだ試してない、有望と思う順
 
-1. **two-way の探索フェーズを「末尾での最長部分一致」を報告するよう改造する。** two-way は完全一致しか報告しないが、内部で「位置 j で何文字一致したか」を持っている。テキストを W、パターンを W にして、`j + 一致長 == n` となる最初の j を返せば border。critical factorization に基づくシフトが O(n) 総量を保証するかは要確認（Galil–Seiferas の定数空間 border 計算がこの筋）。
+0. **（2026-09-05 に試して潰れた）two-way の探索フェーズを部分一致に改造する。** `twoway_border.py`。
+   線形性は出る（比較/文字 ≈ 1.0）が正しさが壊れる：two-way のシフト量は「パターン全体との
+   不一致」から導かれるので、末尾で切れた一致に対しては飛びすぎる（`abaa` で border 1 を
+   見逃す）。残り長 L ≤ suffix の尾部を素朴照合にすると正しさは半分戻るが `a^n` で O(n²)。
+   **部分一致には two-way のシフト保証が乗らない。** この筋を続けるなら Galil–Seiferas の
+   定数空間 border 計算をそのまま実装することになる（数日規模）。
+
+1. **Galil–Seiferas (1983) の定数空間 border / period 計算を直接実装する。** two-way は完全一致しか報告しないが、内部で「位置 j で何文字一致したか」を持っている。テキストを W、パターンを W にして、`j + 一致長 == n` となる最初の j を返せば border。critical factorization に基づくシフトが O(n) 総量を保証するかは要確認（Galil–Seiferas の定数空間 border 計算がこの筋）。
 2. **Fischer–Paterson の線形時間 initial-palindrome 手続き**（Galil が引用する原典）を読んで、それが畳み込みでなく組合せ的に書けるか確認する。Galil.pdf はリポジトリ直下（**著作権物、絶対に commit しない**、`.git/info/exclude` 済み）。`galil.txt` に pdftotext 済み（scratchpad、消えてるかも）。
 3. `lps_halving.py` の長い側走査を、ラン圧縮（同一文字のランを1ステップで飛ばす）で線形化できるか。敵対例が全部ラン由来なので、効く可能性はあるが証明は無い。
 
