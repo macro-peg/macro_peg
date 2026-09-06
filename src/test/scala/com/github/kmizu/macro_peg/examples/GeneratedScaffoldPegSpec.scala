@@ -9,7 +9,7 @@ class GeneratedScaffoldPegSpec extends AnyFunSpec {
   describe("ordinary PEG generated from symbolic scaffold equations") {
     it("recognizes marked palindromes using shared Boolean and pointer rules") {
       val source = Source.fromFile(
-        "docs/notes/palindromes-in-peg/generated/scaffold_marked_palindrome.peg")
+        "src/test/resources/palindromes/scaffold_marked_palindrome.peg")
       val grammar = try source.mkString finally source.close()
       val interpreter = Interpreter.fromSourceEither(grammar) match {
         case Right(value) => value

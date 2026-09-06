@@ -1,9 +1,0 @@
-[package]
-name = "plain-peg-runner"
-version = "0.1.0"
-edition = "2021"
-default-run = "plain-peg-runner"
-
-[profile.release]
-lto = "thin"
-codegen-units = 1

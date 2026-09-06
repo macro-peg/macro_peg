@@ -50,7 +50,7 @@ CharacterClass<- '[' '^'? (!']' .)+ ']'
 - Combinator ergonomics: `label`, `cut`, `recover`, `trace`, and formatted failures
 - Debug expressions for inspecting matches
 - Ruby parser (`ruby.RubyParser`) achieving 100% parse success on the upstream Ruby test corpus (302/302 files), with full AST (`ruby.RubyAst`)
-- Palindrome case study (`examples.PalindromePegs`): a two-rule Macro PEG for the whole palindrome language, plus generated plain PEGs that close in on it from inside and outside — see [docs/notes/palindromes-in-peg.md](docs/notes/palindromes-in-peg.md)
+- Palindrome case study (`examples.PalindromePegs`): a two-rule Macro PEG for the whole palindrome language, plus generated plain PEGs that close in on it from inside and outside — see [docs/notes/palindromes-in-peg.md](docs/notes/palindromes-in-peg.md) The full plain PEG for `PAL` (13M rules, generated from a real-time machine) and its verification live in [kmizu/lean4-peg](https://github.com/kmizu/lean4-peg).
 
 ## Getting Started
 
