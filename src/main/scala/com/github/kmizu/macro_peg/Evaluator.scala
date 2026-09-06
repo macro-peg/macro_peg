@@ -41,9 +41,16 @@ case class Evaluator(grammar: Ast.Grammar, strategy: EvaluationStrategy = Evalua
   )
   private case class MemoKey(remainingLength: Int, expression: Ast.Expression, envHash: Int)
 
-  private def envHash(bindings: Map[Symbol, Ast.Expression]): Int = {
+  private def hashEnvironment(bindings: Map[Symbol, Ast.Expression]): Int = {
     bindings.foldLeft(1) { case (acc, (k, v)) => 31 * acc + k.## + v.## }
   }
+
+  // Plain PEG calls share this immutable environment. Rehashing every rule
+  // body at every expression evaluation dominates large generated grammars.
+  private lazy val globalEnvironmentHash: Int = hashEnvironment(FUNS)
+
+  private def envHash(bindings: Map[Symbol, Ast.Expression]): Int =
+    if(bindings eq FUNS) globalEnvironmentHash else hashEnvironment(bindings)
 
   private def expectation(exp: Ast.Expression): String = exp match {
     case Ast.StringLiteral(_, s) => "\"" + s + "\""

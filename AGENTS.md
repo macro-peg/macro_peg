@@ -33,6 +33,37 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 
 ## 対話メモ
 
+### 2026-09-07: 元入力の全体構築とPEGの規則圧縮
+- `scaffold_window_pal.py` の全4ワーカーを固定展開し、全体SCAの構築・型検査を一度完了。41,298 Boolean欄 / 4,291 pointer欄。ただし保存前の定数畳込みが22GiBの上限でMemoryErrorとなり、PEGは未出力。現在は構築データを先に保存し、同じ式を直接出力する経路で再生成中。元入力でのPAL実マッチはまだ未検証。
+- `compact_scaffold_peg.py --short-names --inline-private` は普通PEGの一度だけ参照される補助規則を括弧付きで展開する。3命令のGS部品は30,427,106 bytes / 891,595規則から10,118,379 bytes / 74,549規則へ縮み、Rustで8例の判定が一致した。部品の結果を全体PAL完成とは扱わない。
+- 生成器に保存・再開と定数畳込みの省略を追加。PEG出力時も式のIDと参照だけを保持するようにした。3命令GS部品の出力はSHA-256が一致し、最大メモリが約783MBから約469MBへ減少。段階制御は人工の期限いっぱい使うworkerをつないで130文字分の切替・受け渡しを検証した。
+
+### 2026-09-06: GSの固定ヘッド構成と二段階PAL
+- 「最後まで突っ走ってな。検証しつつ」を受け、巨大なGalil全展開へ戻らず、二つだけ重なる段階とGS照合器でPALを組む構成を実装中。`delayed_pal.py` のindexed版は33,237入力の全prefixと期限検査が一致した。
+- GSのborder、逐次照合、回文prefixフラグを、整数位置を制御に渡さない有限ヘッド命令表へ変換した。borderは468状態（単位移動化後746）、逐次照合457、フラグ768状態。
+- ヘッド間距離を符号付きカウンタで保持し、pointer identityなしに順序・一致を判定。border照合器は普通PEG 75,818規則 / 2,445,841 bytesへ出力し、Rustで8例の実マッチが参照結果と一致。
+- そのPEGは読み込み・作業文字を含む接続試験で、元の二進入力を認識するPAL PEGではない。局所的な入力・snapshot、段階controller、サービス量と一文字遷移への接続は継続中。詳細は `GS_OVERLAP.md` / `DELAYED_PAL.md`。
+
+### 2026-09-06: コンパクトな構成へ戻る
+- 先輩が、PALに対するGB級の膨張は不自然で翻訳設計を疑うべき、と明確化した。巨大な全展開と微小なメモリ最適化を主軸から外した。
+- `midpoint_peg.py` で任意長の残り入力のfloor/ceil半分を消費する普通PEGを構成。`generated/midpoint.peg` は9,949規則・269,633 bytes。中点の位置を返す部品であり、PAL判定そのものは未完成。`MIDPOINT.md` に不変条件と再現手順を残した。
+
+### 2026-09-06: PALの変換戦略を組み直す
+- 先輩が経験的なmagic numberとパッチワークを止め、「改めて変換戦略をたてて、それを一歩一歩すすめよう。既に実装した部品でももちろん使えるところはつかえばいい」と指示。
+- `docs/notes/palindromes-in-peg/TRANSLATION_STRATEGY.md` に現行戦略を記録。原論文のオンライン算法→予測可能性による実時間化→一文字分を一ノードへまとめたSCA→普通のPEG、の各段で何を保存するかを明示した。
+- 旧121MB候補は元入力 `ab` を誤受理するのでPAL PEGではない。SCA入力側で内部stepと入力一文字を取り違えた。2048の調整や当該候補の逆展開を次の作業にしない。
+- 最初に予算なしのオンライン実行で六例の全prefix出力を照合し一致。次は§8の報告後継続とmain(C,r)/move/main1の契約を照合する。完成したPAL PEGはまだない。
+- 続く `next` で、出力済みと次入力可を分けた `OnlineGalil` を実装。文字なしの `work()` で報告後のgap/継続処理を進める。当初のemit=入力待ちという仕様は原論文に合わせ訂正した。長さ5までの全二進列についてprefixの答えと真の回文接尾辞の中心/左右head位置を含む新規5テスト成功。次はmain/move/chainの契約と時間境界。詳細は `ONLINE_EVENTS.md`。
+- 同変更の旧controller7件・circuit比較2件も成功。`sbt test` はキャッシュ利用で終了0（Scala実行0件）。
+- 続く `Implement the plan.` を受け、main/move/replay/chainの外部監査、FPP/DP命令数境界、そこから導く内部clockと実時間サービス量、有限FIFO、一文字分を一ノードへまとめる変換を実装。小さな遅延出力例では普通PEGへ出して元入力11例をRustで確認した。全体PALの生成はsource構築後のFIFO接続中に300秒で停止し、最終PEGはまだない。現在は処理量を変えずコンパイラのメモリとセル配置を改善中。詳細と未達成事項は `PACKED_ROUNDS.md` / `HANDOFF.md`。
+- 共有セルでsourceを7,133 Boolean欄 / 1,686 pointer欄に縮め、全体状態比較を通した。FIFOも構築できたが、全体ノード統合は600秒で停止。現方式の全展開は約1.95億のBoolean欄を要し、別の小さな最適化では解決していない。前段は約274MBの有限DAGとして保存し、同じ構築結果から再開可能にした。これはPEGではなく中間機械で、最終PALは未完成。
+- 保存済みFIFOから時間枠を1,800秒にして再開した結果、全体ノード統合で16GiBのコンパイル上限によるメモリ不足になった。最終PEGは未出力。関連41 Pythonテストは全成功、`sbt test` はキャッシュ利用で成功（Scala再実行0件）。結果・中間機械・再現手順を保存し、未達成を明示した。
+
+### 2026-09-05: PALは生成物のマッチを先に確認する
+- 先輩の明示方針: 独立した証明の完成を先行条件にせず、長さ上限を埋め込まない候補PEGを出し、偶数長・奇数長と非回文の具体例でまずマッチを確認する。証明は実物がいけそうと分かってから詰める。
+- 生成器の過剰展開で中間PEGが155MBに達した。先輩の提案でRustの普通PEG evaluatorを実装し、既存8文法428例でPython版と一致。規則/式を整数ID化し、再帰を明示スタック、packrat結果を64位置単位で確保した。
+- 121MBの中間候補で14例（空文字、1〜6文字の回文と非回文）が期待通り。ただし各入力文字を2048回繰り返して与える段階であり、入力長の上限ではない。元の文字列をそのまま認識する最終PAL PEGは未完成。中間成功を完成と呼ばない。
+
 ### 2026-03-02
 - コウタから「macro-peg を実用的にするには何が必要か」を相談された。
 - 論点は parser generator / parser combinator / 親切なエラーメッセージなど、実運用向け機能の優先順位づけ。
@@ -368,3 +399,46 @@ PRタイトルのフォーマット：`[<project_name_>] <タイトル>`
 | yjit_30k_ifelse | 14.9ms | 182ms | 12x |
 
 - yjit 30kは`takeUntil`最適化で12倍差まで縮まるが、通常ファイルは300-500倍差。チューニング余地はidentifier/number一括読み、token関数最適化、List allocation削減などに残る。
+
+### 2026-09-05: PAL の offline FPP に実装上の突破口
+
+- コウタ先輩から `docs/notes/palindromes-in-peg/HANDOFF.md` を引き継いで、素の PEG で PAL を表す研究を続けるよう任された。
+- Fischer–Paterson 原論文の Algorithm Y を読み、失敗関数の隣接差分を単項テープで保持する局所ヘッド版を `fpp_tape.py` に実装。共有 append-only テープをキュー経由で分離した7本の単独ヘッドテープ版も動いた。
+- 両版で長さ16以下の全131,071文字列の回文接頭辞が一致。単独ヘッド版はランダム・周期文字列2,000件の境界列も一致した。
+- さらに FPP 本体を188状態・7テープの有限命令表に変換し、同じ131,071文字列で一致を確認。`generated/fpp-offline-controller.json` として実体を残し、そのJSONを直接読むテストも通した。
+- 続けて入力準備と出力の印付けまで264状態・9テープにし、Galil の1窓分のdouble-palindrome探索も373状態・12テープで実装。前者131,071入力、後者27,304組で一致、独立レビューも指摘なし。残る実時間制御は古いyield数の計測を流用せず、局所命令の実数で組み直す。
+- さらに `fpp_reuse.py` で任意のjob/bootstrap命令境界から中断・掃除する有限制御を追加し、place版DPは702状態・12テープになった。77,103中断点と500連続呼び出し、Python19テストを通し、独立レビューも指摘なし。入力内容を残し、全作業テープ消去・全ヘッド原点復帰まで局所命令で行う。掃除中の再中断や任意のdirty tapeは対象外。Galil窓からの局所転送と外側のスケジュールはまだ残る。
+- 次に `dp_search_finite.py` で中心印からの局所窓転送・段階倍増・内側DP再利用・四つの半周期印を898状態16テープへ接続。32,220二値ケースと1,000placeケース、Python24テスト、独立レビューが通った。原論文のmatch待ち合わせや外側中断を伴う実時間スケジュールはまだ別途必要。
+- そのまま `dp_search_reuse.py` で探索全体の中断・再利用まで1,458状態17テープに接続。掃除途中の空白穴を見つけ、論理的な空白を物理的な消去印として残す表現で修正した。15,836二値ケース、600ランダム中断、Python27テスト、独立レビューの追加15,039中断点が通った。今後はmatch待ち合わせ・段階境界印・chain/move/replayを結ぶ。
+- PAL の PEG 自体は未完成。Galil の実時間制御、有限遷移への lowering、symbolic δ と PEG 出力が残る。再開点と根拠は `PROGRESS.md` / `FISCHER_PATERSON.md` に記録した。
+
+- 続けてright-dpと三者照合を4,510状態18テープ、中断可能版6,450状態19テープに接続。分岐判断までで、実際の中心移動はまだ残る。1,080追加ケースと独立レビューが成功。
+- sparseなTM→PEG出力で19テープを461規則21,187bytesにでき、実Interpreterでも確認した。全643 Scalaテストが通過。Evaluatorの不変な大域文法環境hashだけをキャッシュし、sparse検査が約98秒から約1.7秒へ短縮した。PAL全体の完成ではないことを先輩にも明確に伝えた。
+
+- さらに `phase_peg.py` で固定k倍の仮想入力展開を逆変換し、一文字あたり複数のTM命令を普通のPEGへ落とす出力側の接続を実装。k=4で同じ入力文字内のpush/pop、k=2で文字をまたぐpush/popを実Interpreterで確認した。phaseごとの返り位置と優先選択・反復のcommitを保ち、到達不能phaseを有限解析で消す。Python43件、新Scala3件が成功。独立レビューで開始規則の不一致を発見し、Sを既定として回帰テストから直した。全体スケジュールや中心移動ができたという意味ではなく、PALの最終成果はまだ未完成。詳しい再開点は `PHASE_PEG.md`。
+- 最終の全体検証はScala646件・37 suitesがすべて成功。phase変換の独立再レビューも残る指摘なし、比較は合計66,780ケース。全体PALは未達のままで、部品だけの完成と区別する。
+- 先輩の「勢いにのれー」を受け、nonchain moveの最長奇数回文suffix選択とWINDOW中心移動、scratch全消去を734状態13テープにした。8,690区間の範囲外アクセス禁止検査、独立レビュー144連続再利用、Python全48件が成功。原論文のmove全体やmain1再開まで済んだという意味ではない。接続点は `MOVE_CENTER.md`。
+- 次にSCA上でreadonly入力headを複製・前後移動する部品を作成。3head10,000step、独立4head15,000step、SELF複製2,000stepが一致。入力配布途中copyの二重読取りを回帰テストから直し、H本・N操作なら76H+66N pointer reads、78H+66N pointer fieldsの境界を独立に確認。全53 Pythonテストと最終レビューが成功。有限のslot制限と配布barrierが前提で、全体PALへの接続はこれから。
+- さらに `scaffold_pal.py` で全prefixの照合・有限FPP実行・候補選択・入力head移動・scratch再利用までつないだ。一命令の境界は391 pointer reads / 396 fields。入力後にdrainするbaselineで、実時間PALではない。`aa` をbudget=3で動かすと陽性を落とすことも固定した。
+- `scaffold_search.py` に実DP命令と単項span/debt、match半径ell/4での待ち合わせ・窓倍増を接続。締切ちょうどの終了をレビューで修正し、`scaffold_places.py` でpaddingなしのletter/gap viewもDPにつないだ。全66 Pythonテストと独立再レビューが成功。十分なmatch clock、chain維持・移動・main1・全体PEGはまだ残る。再開点は `SCA_ONLINE_CONTROL.md`。
+- 全体chain制御 `scaffold_galil.py` / `scaffold_chain.py` で実DP/FPP・周期確認・実中心移動・replayを接続し、73 Pythonテストが成功。固定2048tick候補の任意長保証はまだ未証明で、時間会計と残る義務を `SCA_GALIL.md` に分離して記録。
+- `symbolic_sca2peg.py` は有限Boolean/pointer式から普通のPEGを直接生成。区切り付き回文例は35規則607bytes、新規5 PythonテストとScala実Interpreterの全列挙検査が成功。`sbt test` は新規1件実行・他cachedで成功。起動時の `/run/user/1000` 問題は `env -u XDG_RUNTIME_DIR sbt --server --batch test` で回避した。
+- 先輩から「メタ認知を意識して俯瞰しつつな」。部品の増加・テスト成功を最終完成と混同せず、固定仕事量の任意長保証と全体制御のPEGへのloweringという核心へ作業を結びつける。最終PAL PEGは依然未完成。
+
+### 2026-09-06: PALの局所controllerとラウンドの圧縮
+- 先輩の「最後まで突っ走ってな。検証しつつ」を受け、GS照合器・回文prefix flags・二段階PAL全体を局所SCAへ接続した。入力反復付きの普通PEGで選択例が一致しているが、未加工入力の最終PAL PEGはまだ完成していない。
+- 全ラウンドを従来のphase変換に入れると2段約14 MB、4段約56 MBまで増えると確認した。巨大な全展開を進めず、途中のセルを作らずに有限の増減・変位をまとめる表現へ切り替えている。
+- window counter / head positions / input block heads / flag packets / Boolean ROMを実装し、各部品の普通PEGテストが成功。input headsはRustでも未展開の106入力で一致した。
+- GS flagsを `u` と `reverse(u)` の二viewにして、前処理長を `2b+1` から `b` へ削減。4,158語・12,474区間と局所SCAで検証し、全体既定clockを16,423から8,231step/文字にした。
+- GS命令burstのwindow版を接続・検証中。再開点は `docs/notes/palindromes-in-peg/HANDOFF.md`、境界と根拠は `WINDOW_ROUNDS.md` / `GS_LOCAL_CLOCK.md`。Scalaの `sbt test` はcache利用で成功した。
+
+
+### 2026-09-06: 未加工入力のPAL sourceを接続
+- WindowRegistersでlive距離registerを再利用し、命令途中のheapアクセスを除いた。GS batch 3命令の実PEGは30,427,106 bytes、Rustの8例が一致した（部品用work文字付き）。
+- 元入力streamのsnapshotへ正順・逆順workerをつなぎ、到着中のflagsとmatcherでPC/live距離/flagsがnative observerと一致した。
+- batch命令とLower未満での探索終了から512/1,024の固定serviceを導き、別observerによる全体PAL prefix・期限を検証。scaffold_window_pal.pyに一文字一遷移の全体sourceを実装し、最終PEGの生成・生入力実行へ進んだ。生成と実行が終わるまでは完成とは報告しない。
+
+### 2026-09-07: 全体の普通PEGが初めて未加工入力で動いた
+- 原文法の生成が完了し、汎用Rust PEG実行器で空語・a・b・aa・aba・abbaを受理、ab・ababを拒否した。入力反復・work文字なしの実マッチ8例がすべて一致した。
+- 原文法は2,118,673,778 bytes / 59,169,304規則。Rustへ移した通常PEGの非終端展開で672,208,000 bytes / 13,248,052規則へ縮めた。部品ではPython版と出力SHAが一致し、実マッチ8例も一致した。
+- 圧縮版 `/tmp/pal-window-fast.peg` の79例がすべて一致した。全二進語の長さ5まで、長さ33までの選択例、非二進文字を含む4例で、29受理・50拒否。JSONのstatusはpassed。完了ログは `generated/window-pal-verification.{json,log}`、構成と再現は `PLAIN_PAL_ARTIFACT.md`。Rust 9テストとsbt test（Scalaはcache利用）も成功。任意長の形式的証明は有限テストと区別して残す。
