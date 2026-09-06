@@ -1,4 +1,9 @@
-"""FPP: all palindromic prefixes of a string, in linear time — reference implementation
+"""HISTORICAL NOTE (2026-09-05): fpp_tape.py now implements Fischer–Paterson's
+unary adjacent-difference representation with local heads, including a seven
+single-head-tape lowering. The objections below concern the earlier direct
+failure-pointer encoding, not all KMP implementations. See FISCHER_PATERSON.md.
+
+FPP: all palindromic prefixes of a string, in linear time — reference implementation
 and an analysis of what it costs in the machine model that compiles to a PEG.
 
 Galil's real-time recogniser calls FPP (Fischer & Paterson) twice: in the nonchain case

@@ -1,0 +1,9 @@
+loaded	rules=59169304	expressions=184377703	seconds=811.268056
+match	""	true	seconds=0.191592	steps=23	memo_bytes=473354504	characters=0	repeat=1
+match	"a"	true	seconds=5.377769	steps=3962588	memo_bytes=499163952	characters=1	repeat=1
+match	"b"	true	seconds=5.317417	steps=3962589	memo_bytes=499163952	characters=1	repeat=1
+match	"ab"	false	seconds=0.794425	steps=643	memo_bytes=473357072	characters=2	repeat=1
+match	"aa"	true	seconds=7.127154	steps=11933394	memo_bytes=533449856	characters=2	repeat=1
+match	"aba"	true	seconds=11.159598	steps=21677980	memo_bytes=548296832	characters=3	repeat=1
+match	"abba"	true	seconds=18.246607	steps=40558834	memo_bytes=638654720	characters=4	repeat=1
+match	"abab"	false	seconds=8.215357	steps=13302209	memo_bytes=542247296	characters=4	repeat=1
