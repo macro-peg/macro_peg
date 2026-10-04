@@ -1,7 +1,0 @@
-loaded	rules=13248052	expressions=138453228	seconds=51.050251
-match	"aabbaa"	true	seconds=4.135886	steps=51364557	memo_bytes=156968992	characters=6	repeat=1
-match	"aababa"	false	seconds=0.479536	steps=1562104	memo_bytes=110339744	characters=6	repeat=1
-match	"abaaaba"	true	seconds=4.919405	steps=64259644	memo_bytes=163821664	characters=7	repeat=1
-match	"baababb"	false	seconds=2.111477	steps=22427432	memo_bytes=127477984	characters=7	repeat=1
-match	"aabbbaa"	true	seconds=3.108068	steps=62835022	memo_bytes=161087776	characters=7	repeat=1
-EXIT=0

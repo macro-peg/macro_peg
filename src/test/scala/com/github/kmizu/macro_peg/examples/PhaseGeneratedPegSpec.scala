@@ -7,7 +7,7 @@ import scala.io.Source
 
 class PhaseGeneratedPegSpec extends AnyFunSpec {
   private def recognizer(file: String): String => Boolean = {
-    val source = Source.fromFile(s"docs/notes/palindromes-in-peg/generated/$file")
+    val source = Source.fromFile(s"src/test/resources/palindromes/$file")
     val grammar = try source.mkString finally source.close()
     val interpreter = Interpreter.fromSourceEither(grammar) match {
       case Right(value) => value

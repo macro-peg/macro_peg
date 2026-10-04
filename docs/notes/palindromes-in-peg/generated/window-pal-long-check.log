@@ -1,6 +1,0 @@
-loaded	rules=13248052	expressions=138453228	seconds=46.034084
-match	"aabaaaaabaaaaaaababbaabbbaabaabaabaabaabbbaabbabaaaaaaabaaaaabaa"	true	seconds=40.232726	steps=834426684	memo_bytes=954922488	characters=64	repeat=1
-match	"aabaaaaabaaaaaaababbbabbbaabaabaabaabaabbbaabbabaaaaaaabaaaaabaa"	false	seconds=6.869714	steps=157971623	memo_bytes=395724584	characters=64	repeat=1
-match	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"	true	seconds=49.946193	steps=997278122	memo_bytes=1302259512	characters=65	repeat=1
-match	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab"	false	seconds=10.167737	steps=215241272	memo_bytes=522869168	characters=65	repeat=1
-EXIT=0

@@ -7,8 +7,8 @@ import org.scalatest.diagrams.Diagrams
 import scala.io.Source
 
 /**
- * `docs/notes/palindromes-in-peg/generated/anbn_from_tm.peg` is a plain PEG *generated* from a
- * real-time one-tape Turing machine by `docs/notes/palindromes-in-peg/tm2peg.py`, using the
+ * `src/test/resources/palindromes/anbn_from_tm.peg` is a plain PEG *generated* from a
+ * real-time one-tape Turing machine by `tm2peg.py` (now in kmizu/lean4-peg, docs/palindromes-in-peg/), using the
  * correspondence "PEG position i = the machine's configuration after reading reverse(w) up to
  * w(i)": each tape is a zipper whose stacks are chains of memo positions, so a head move is a
  * forward jump and the machine needs no position or identity comparison.
@@ -19,7 +19,7 @@ import scala.io.Source
  */
 class GeneratedFromTmSpec extends AnyFunSpec with Diagrams {
   private val grammar: String = {
-    val source = Source.fromFile("docs/notes/palindromes-in-peg/generated/anbn_from_tm.peg")
+    val source = Source.fromFile("src/test/resources/palindromes/anbn_from_tm.peg")
     try source.mkString finally source.close()
   }
 
